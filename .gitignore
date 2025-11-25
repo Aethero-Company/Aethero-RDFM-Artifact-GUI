@@ -1,0 +1,5 @@
+*.pem
+build/
+*.egg-info
+*pycache*
+installer-tests/
