@@ -29,26 +29,18 @@ class ArtifactTab(BaseTab):
     """Tab for creating and reading RDFM artifacts"""
 
     def setup_ui(self):
-        """Setup the artifact tab UI"""
+        """Setup the artifact tab UI with sub-tabs for different artifact creators"""
         # Main container frame
         main_frame = ttk.Frame(self.frame)
         main_frame.pack(fill=tk.BOTH, expand=True, padx=STANDARD_PAD, pady=STANDARD_PAD)
 
-        # Top section for controls (grid layout)
-        controls_frame = ttk.Frame(main_frame)
-        controls_frame.pack(fill=tk.X, padx=STANDARD_PAD, pady=STANDARD_PAD)
-
-        # Configure grid columns to be equal width
-        controls_frame.columnconfigure(0, weight=1)
-        controls_frame.columnconfigure(1, weight=1)
-
-        # Read Artifact section (spans both columns at top)
-        read_frame = ttk.LabelFrame(controls_frame, text="Read Artifact")
-        read_frame.grid(row=0, column=0, columnspan=2, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='ew')
+        # Read Artifact section at the top (full width)
+        read_frame = ttk.LabelFrame(main_frame, text="Read Artifact")
+        read_frame.pack(fill=tk.X, padx=STANDARD_PAD, pady=STANDARD_PAD)
 
         ttk.Label(read_frame, text="Artifact File:").grid(row=0, column=0, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
         self.read_path_var = tk.StringVar()
-        ttk.Entry(read_frame, textvariable=self.read_path_var, width=40).grid(row=0, column=1, padx=STANDARD_PAD, pady=STANDARD_PAD)
+        ttk.Entry(read_frame, textvariable=self.read_path_var, width=60).grid(row=0, column=1, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='ew')
         ttk.Button(read_frame, text="Browse...",
                   command=lambda: browse_file(
                       "Select Artifact File",
@@ -58,26 +50,23 @@ class ArtifactTab(BaseTab):
         ttk.Button(read_frame, text="Read",
                   command=self.read_artifact).grid(row=0, column=3, padx=STANDARD_PAD, pady=STANDARD_PAD)
 
-        # Write Single-File Artifact section (row 1, column 0)
-        self.single_file_frame = ttk.LabelFrame(controls_frame, text="Write Single-File Artifact")
-        self.single_file_frame.grid(row=1, column=0, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='nsew')
-        self.setup_single_file_frame()
+        # Make the entry field expand
+        read_frame.columnconfigure(1, weight=1)
 
-        # Write Delta Rootfs Artifact section (row 2, column 0)
-        self.delta_frame = ttk.LabelFrame(controls_frame, text="Write Delta Rootfs Artifact")
-        self.delta_frame.grid(row=2, column=0, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='nsew')
-        self.setup_delta_rootfs_frame()
+        # Create notebook for artifact creation tabs
+        self.creator_notebook = ttk.Notebook(main_frame)
+        self.creator_notebook.pack(fill=tk.BOTH, expand=True, padx=STANDARD_PAD, pady=STANDARD_PAD)
 
-        # Write Docker Container Artifact section (row 1, column 1)
-        self.docker_frame = ttk.LabelFrame(controls_frame, text="Write Docker Container Artifact")
-        self.docker_frame.grid(row=1, column=1, rowspan=2, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='nsew')
-        self.setup_docker_frame()
+        # Create tabs for different artifact types
+        self.setup_single_file_tab()
+        self.setup_delta_tab()
+        self.setup_docker_tab()
 
-        # Output area at the bottom
+        # Output area at the bottom (40% of available space)
         output_frame = ttk.LabelFrame(main_frame, text="Output")
-        output_frame.pack(fill=tk.BOTH, expand=True, padx=STANDARD_PAD, pady=STANDARD_PAD)
+        output_frame.pack(fill=tk.BOTH, expand=False, padx=STANDARD_PAD, pady=STANDARD_PAD)
 
-        self.output = tk.Text(output_frame, wrap=tk.WORD, height=10)
+        self.output = tk.Text(output_frame, wrap=tk.WORD, height=18)
         self.output.pack(fill=tk.BOTH, expand=True, padx=STANDARD_PAD, pady=STANDARD_PAD, side=tk.LEFT)
 
         scrollbar = ttk.Scrollbar(output_frame, orient=tk.VERTICAL, command=self.output.yview)
@@ -97,12 +86,55 @@ class ArtifactTab(BaseTab):
             self.docker_image_combo
         )
 
+    def setup_single_file_tab(self) -> None:
+        """Setup the Single-File artifact tab"""
+        tab_frame = ttk.Frame(self.creator_notebook)
+        self.creator_notebook.add(tab_frame, text="Single-File Artifact")
+
+        # Frame for the form (fills entire tab)
+        self.single_file_frame = ttk.Frame(tab_frame)
+        self.single_file_frame.pack(fill=tk.BOTH, expand=True, padx=STANDARD_PAD, pady=STANDARD_PAD)
+
+        self.setup_single_file_frame()
+
+    def setup_delta_tab(self) -> None:
+        """Setup the Delta Rootfs artifact tab"""
+        tab_frame = ttk.Frame(self.creator_notebook)
+        self.creator_notebook.add(tab_frame, text="Delta Rootfs Artifact")
+
+        # Frame for the form (fills entire tab)
+        self.delta_frame = ttk.Frame(tab_frame)
+        self.delta_frame.pack(fill=tk.BOTH, expand=True, padx=STANDARD_PAD, pady=STANDARD_PAD)
+
+        self.setup_delta_rootfs_frame()
+
+    def setup_docker_tab(self) -> None:
+        """Setup the Docker Container artifact tab"""
+        tab_frame = ttk.Frame(self.creator_notebook)
+        self.creator_notebook.add(tab_frame, text="Docker Container Artifact")
+
+        # Frame for the form (fills entire tab)
+        self.docker_frame = ttk.Frame(tab_frame)
+        self.docker_frame.pack(fill=tk.BOTH, expand=True, padx=STANDARD_PAD, pady=STANDARD_PAD)
+
+        self.setup_docker_frame()
+
     def setup_single_file_frame(self) -> None:
         """Setup UI components for single-file artifact creation"""
+        # Configure grid columns for 2-column layout
+        self.single_file_frame.columnconfigure(1, weight=1)
+        self.single_file_frame.columnconfigure(4, weight=1)
+
+        # Configure rows to expand vertically
+        self.single_file_frame.rowconfigure(0, weight=1)
+        self.single_file_frame.rowconfigure(1, weight=1)
+        self.single_file_frame.rowconfigure(2, weight=1)
+
+        # LEFT COLUMN
         # Input file
         ttk.Label(self.single_file_frame, text="Input File:").grid(row=0, column=0, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
         self.single_file_input_var = tk.StringVar()
-        ttk.Entry(self.single_file_frame, textvariable=self.single_file_input_var, width=40).grid(row=0, column=1, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
+        ttk.Entry(self.single_file_frame, textvariable=self.single_file_input_var).grid(row=0, column=1, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='ew')
         ttk.Button(self.single_file_frame, text="Browse...",
                   command=lambda: browse_file(
                     title="Select Input File",
@@ -110,52 +142,63 @@ class ArtifactTab(BaseTab):
                     var_set=self.single_file_input_var
                   )).grid(row=0, column=2, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
 
-        # Destination directory
-        ttk.Label(self.single_file_frame, text="Dest Directory:").grid(row=1, column=0, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
-        self.dest_dir_var = tk.StringVar()
-        ttk.Entry(self.single_file_frame, textvariable=self.dest_dir_var, width=40).grid(row=1, column=1, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
-
         # Device type
-        ttk.Label(self.single_file_frame, text="Device Type:").grid(row=2, column=0, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
+        ttk.Label(self.single_file_frame, text="Device Type:").grid(row=1, column=0, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
         self.device_type_var = tk.StringVar(value=SUPPORTED_DEVICE_TYPES[0])
         self.single_device_type_combo = ttk.Combobox(
             self.single_file_frame, textvariable=self.device_type_var,
-            values=SUPPORTED_DEVICE_TYPES, state="readonly", width=40)
-        self.single_device_type_combo.grid(row=2, column=1, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
-
-        # Artifact name
-        ttk.Label(self.single_file_frame, text="Artifact Name:").grid(row=3, column=0, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
-        self.artifact_name_var = tk.StringVar()
-        ttk.Entry(self.single_file_frame, textvariable=self.artifact_name_var, width=40).grid(row=3, column=1, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
+            values=SUPPORTED_DEVICE_TYPES, state="readonly")
+        self.single_device_type_combo.grid(row=1, column=1, columnspan=2, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='ew')
 
         # Output path
-        ttk.Label(self.single_file_frame, text="Output Path:").grid(row=4, column=0, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
+        ttk.Label(self.single_file_frame, text="Output Path:").grid(row=2, column=0, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
         self.single_file_output_path_var = tk.StringVar(value="artifact.rdfm")
-        ttk.Entry(self.single_file_frame, textvariable=self.single_file_output_path_var, width=40).grid(row=4, column=1, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
+        ttk.Entry(self.single_file_frame, textvariable=self.single_file_output_path_var).grid(row=2, column=1, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='ew')
         ttk.Button(self.single_file_frame, text="Browse...",
                   command=lambda: browse_save_file(
                       title="Save Artifact As",
                         default_extension=".rdfm",
                         filetypes=FILETYPES_RDFM,
                         var_set=self.single_file_output_path_var
-                  )).grid(row=4, column=2, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
+                  )).grid(row=2, column=2, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
+
+        # RIGHT COLUMN
+        # Destination directory
+        ttk.Label(self.single_file_frame, text="Dest Directory:").grid(row=0, column=3, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
+        self.dest_dir_var = tk.StringVar()
+        ttk.Entry(self.single_file_frame, textvariable=self.dest_dir_var).grid(row=0, column=4, columnspan=2, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='ew')
+
+        # Artifact name
+        ttk.Label(self.single_file_frame, text="Artifact Name:").grid(row=1, column=3, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
+        self.artifact_name_var = tk.StringVar()
+        ttk.Entry(self.single_file_frame, textvariable=self.artifact_name_var).grid(row=1, column=4, columnspan=2, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='ew')
 
         # Rollback support checkbox
         self.rollback_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(self.single_file_frame, text="Rollback Support",
-                       variable=self.rollback_var).grid(row=5, column=1, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
+                       variable=self.rollback_var).grid(row=2, column=4, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
 
-        # Create button
+        # Create button (centered at bottom)
         ttk.Button(self.single_file_frame, text="Create Artifact",
                   command=self.create_single_file_artifact,
-                  style="Add.TButton").grid(row=6, column=1, padx=STANDARD_PAD, pady=10, sticky='w')
+                  style="Add.TButton").grid(row=3, column=1, columnspan=4, padx=STANDARD_PAD, pady=10)
 
     def setup_delta_rootfs_frame(self) -> None:
         """Setup UI components for delta rootfs artifact creation"""
+        # Configure grid columns for 2-column layout
+        self.delta_frame.columnconfigure(1, weight=1)
+        self.delta_frame.columnconfigure(4, weight=1)
+
+        # Configure rows to expand vertically
+        self.delta_frame.rowconfigure(0, weight=1)
+        self.delta_frame.rowconfigure(1, weight=1)
+        self.delta_frame.rowconfigure(2, weight=1)
+
+        # LEFT COLUMN
         # Base artifact
         ttk.Label(self.delta_frame, text="Base Artifact:").grid(row=0, column=0, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
         self.base_artifact_var = tk.StringVar()
-        ttk.Entry(self.delta_frame, textvariable=self.base_artifact_var, width=40).grid(row=0, column=1, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
+        ttk.Entry(self.delta_frame, textvariable=self.base_artifact_var).grid(row=0, column=1, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='ew')
         ttk.Button(self.delta_frame, text="Browse...",
                   command=lambda: browse_file(
                     title="Select Base Artifact",
@@ -163,66 +206,72 @@ class ArtifactTab(BaseTab):
                     var_set=self.base_artifact_var
                   )).grid(row=0, column=2, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
 
+        # Device type for delta
+        ttk.Label(self.delta_frame, text="Device Type:").grid(row=1, column=0, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
+        self.delta_device_type_var = tk.StringVar(value=SUPPORTED_DEVICE_TYPES[0])
+        self.delta_device_type_combo = ttk.Combobox(
+            self.delta_frame, textvariable=self.delta_device_type_var,
+            values=SUPPORTED_DEVICE_TYPES, state="readonly")
+        self.delta_device_type_combo.grid(row=1, column=1, columnspan=2, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='ew')
+
+        # Delta algorithm
+        ttk.Label(self.delta_frame, text="Delta Algorithm:").grid(row=2, column=0, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
+        self.delta_algorithm_var = tk.StringVar(value="rsync")
+        self.delta_algo_combo = ttk.Combobox(
+            self.delta_frame, textvariable=self.delta_algorithm_var,
+            values=["rsync", "xdelta"], state="readonly")
+        self.delta_algo_combo.grid(row=2, column=1, columnspan=2, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='ew')
+
+        # RIGHT COLUMN
         # Target artifact
-        ttk.Label(self.delta_frame, text="Target Artifact:").grid(row=1, column=0, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
+        ttk.Label(self.delta_frame, text="Target Artifact:").grid(row=0, column=3, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
         self.target_artifact_var = tk.StringVar()
-        ttk.Entry(self.delta_frame, textvariable=self.target_artifact_var, width=40).grid(row=1, column=1, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
+        ttk.Entry(self.delta_frame, textvariable=self.target_artifact_var).grid(row=0, column=4, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='ew')
         ttk.Button(self.delta_frame, text="Browse...",
                   command=lambda: browse_file(
                     title="Select Target Artifact",
                     filetypes=FILETYPES_RDFM,
                     var_set=self.target_artifact_var
-                  )).grid(row=1, column=2, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
-
-        # Device type for delta
-        ttk.Label(self.delta_frame, text="Device Type:").grid(row=2, column=0, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
-        self.delta_device_type_var = tk.StringVar(value=SUPPORTED_DEVICE_TYPES[0])
-        self.delta_device_type_combo = ttk.Combobox(
-            self.delta_frame, textvariable=self.delta_device_type_var,
-            values=SUPPORTED_DEVICE_TYPES, state="readonly", width=40)
-        self.delta_device_type_combo.grid(row=2, column=1, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
+                  )).grid(row=0, column=5, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
 
         # Artifact name for delta
-        ttk.Label(self.delta_frame, text="Artifact Name:").grid(row=3, column=0, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
+        ttk.Label(self.delta_frame, text="Artifact Name:").grid(row=1, column=3, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
         self.delta_artifact_name_var = tk.StringVar()
-        ttk.Entry(self.delta_frame, textvariable=self.delta_artifact_name_var, width=40).grid(row=3, column=1, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
+        ttk.Entry(self.delta_frame, textvariable=self.delta_artifact_name_var).grid(row=1, column=4, columnspan=2, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='ew')
 
         # Output path for delta
-        ttk.Label(self.delta_frame, text="Output Path:").grid(row=4, column=0, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
+        ttk.Label(self.delta_frame, text="Output Path:").grid(row=2, column=3, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
         self.delta_output_path_var = tk.StringVar(value="delta-artifact.rdfm")
-        ttk.Entry(self.delta_frame, textvariable=self.delta_output_path_var, width=40).grid(row=4, column=1, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
+        ttk.Entry(self.delta_frame, textvariable=self.delta_output_path_var).grid(row=2, column=4, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='ew')
         ttk.Button(self.delta_frame, text="Browse...",
                  command=lambda: browse_save_file(
                       title="Save Delta Artifact As",
                         default_extension=".rdfm",
                         filetypes=FILETYPES_RDFM,
                         var_set=self.delta_output_path_var
-                  )).grid(row=4, column=2, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
+                  )).grid(row=2, column=5, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
 
-        # Delta algorithm
-        ttk.Label(self.delta_frame, text="Delta Algorithm:").grid(row=5, column=0, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
-        self.delta_algorithm_var = tk.StringVar(value="rsync")
-        self.delta_algo_combo = ttk.Combobox(
-            self.delta_frame, textvariable=self.delta_algorithm_var,
-            values=["rsync", "xdelta"], state="readonly", width=40)
-        self.delta_algo_combo.grid(row=5, column=1, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
-
-        # Create delta button
+        # Create delta button (centered at bottom)
         ttk.Button(self.delta_frame, text="Create Delta Artifact",
                   command=self.create_delta_artifact,
-                  style="Add.TButton").grid(row=6, column=1, padx=STANDARD_PAD, pady=10, sticky='w')
+                  style="Add.TButton").grid(row=3, column=1, columnspan=4, padx=STANDARD_PAD, pady=10)
 
     def setup_docker_frame(self) -> None:
         """Setup UI components for Docker container artifact creation"""
+        # Configure grid columns for balanced 2-column layout (50/50 split)
+        self.docker_frame.columnconfigure(1, weight=2)  # Left column entry fields
+        self.docker_frame.columnconfigure(4, weight=2)  # Right column listbox
+
+        # LEFT COLUMN
         # App name
         ttk.Label(self.docker_frame, text="App Name:").grid(row=0, column=0, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
         self.docker_app_name_var = tk.StringVar(value=DEFAULT_DOCKER_APP_NAME)
-        ttk.Entry(self.docker_frame, textvariable=self.docker_app_name_var, width=40).grid(row=0, column=1, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
+        ttk.Entry(self.docker_frame, textvariable=self.docker_app_name_var).grid(row=0, column=1, columnspan=2, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='ew')
 
         # Compose file
         ttk.Label(self.docker_frame, text="Compose File:").grid(row=1, column=0, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
         self.docker_compose_path_var = tk.StringVar()
-        ttk.Entry(self.docker_frame, textvariable=self.docker_compose_path_var, width=40).grid(row=1, column=1, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
+        ttk.Entry(self.docker_frame, textvariable=self.docker_compose_path_var).grid(row=1, column=1, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='ew')
         ttk.Button(self.docker_frame, text="Browse...",
                   command=lambda: browse_file(
                       title="Select Compose File",
@@ -234,7 +283,7 @@ class ArtifactTab(BaseTab):
         ttk.Label(self.docker_frame, text="Image Source:").grid(row=2, column=0, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
         self.docker_image_source_var = tk.StringVar(value="tarball")
         image_source_frame = ttk.Frame(self.docker_frame)
-        image_source_frame.grid(row=2, column=1, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
+        image_source_frame.grid(row=2, column=1, columnspan=2, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
         ttk.Radiobutton(image_source_frame, text="Existing Tarball",
                        variable=self.docker_image_source_var, value="tarball",
                        command=self.toggle_image_source).pack(side=tk.LEFT)
@@ -245,8 +294,8 @@ class ArtifactTab(BaseTab):
         # Image tarball path (for existing tarball)
         ttk.Label(self.docker_frame, text="Image Tarball:").grid(row=3, column=0, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
         self.docker_image_tarball_var = tk.StringVar()
-        self.docker_tarball_entry = ttk.Entry(self.docker_frame, textvariable=self.docker_image_tarball_var, width=40)
-        self.docker_tarball_entry.grid(row=3, column=1, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
+        self.docker_tarball_entry = ttk.Entry(self.docker_frame, textvariable=self.docker_image_tarball_var)
+        self.docker_tarball_entry.grid(row=3, column=1, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='ew')
         self.docker_tarball_browse = ttk.Button(self.docker_frame, text="Browse...",
                   command=lambda: browse_file(
                         title="Select Docker Image Tarball",
@@ -258,20 +307,23 @@ class ArtifactTab(BaseTab):
         # Docker image name (for export from Docker)
         ttk.Label(self.docker_frame, text="Docker Image:").grid(row=4, column=0, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
         self.docker_image_name_var = tk.StringVar()
-        self.docker_image_combo = ttk.Combobox(self.docker_frame, textvariable=self.docker_image_name_var, width=40, state='disabled')
-        self.docker_image_combo.grid(row=4, column=1, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
+        self.docker_image_combo = ttk.Combobox(self.docker_frame, textvariable=self.docker_image_name_var, state='disabled')
+        self.docker_image_combo.grid(row=4, column=1, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='ew')
         self.docker_refresh_images_btn = ttk.Button(self.docker_frame, text="Refresh",
                   command=self.refresh_docker_images, state='disabled')
         self.docker_refresh_images_btn.grid(row=4, column=2, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
 
+        # RIGHT COLUMN
         # Additional files section
-        ttk.Label(self.docker_frame, text="Additional Files:").grid(row=5, column=0, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='nw')
+        ttk.Label(self.docker_frame, text="Additional Files:").grid(row=0, column=3, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='nw')
 
         # Listbox with scrollbars for additional files
         listbox_frame = ttk.Frame(self.docker_frame)
-        listbox_frame.grid(row=5, column=1, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
+        listbox_frame.grid(row=0, column=4, rowspan=4, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='nsew')
+        listbox_frame.columnconfigure(0, weight=1)
+        listbox_frame.rowconfigure(0, weight=1)
 
-        self.docker_files_listbox = tk.Listbox(listbox_frame, width=40, height=5, exportselection=False, selectmode=tk.SINGLE)
+        self.docker_files_listbox = tk.Listbox(listbox_frame, height=8, exportselection=False, selectmode=tk.SINGLE)
         self.docker_files_listbox.grid(row=0, column=0, sticky='nsew')
 
         files_y_scrollbar = ttk.Scrollbar(listbox_frame, orient=tk.VERTICAL, command=self.docker_files_listbox.yview)
@@ -286,9 +338,9 @@ class ArtifactTab(BaseTab):
         if AetheroTheme:
             AetheroTheme.configure_listbox(self.docker_files_listbox)
 
-        # Buttons for adding/removing files (aligned with other buttons in column 2)
+        # Buttons for adding/removing files
         files_buttons = ttk.Frame(self.docker_frame)
-        files_buttons.grid(row=5, column=2, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='nw')
+        files_buttons.grid(row=0, column=5, rowspan=4, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='nw')
 
         ttk.Button(files_buttons, text="Add File",
                   command=lambda: browse_file(
@@ -304,35 +356,36 @@ class ArtifactTab(BaseTab):
         ttk.Button(files_buttons, text="Remove",
                   command=self.remove_docker_file).pack(fill=tk.X, pady=2)
 
+        # BOTTOM ROW (spans both columns)
         # Artifact name for docker
-        ttk.Label(self.docker_frame, text="Artifact Name:").grid(row=6, column=0, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
+        ttk.Label(self.docker_frame, text="Artifact Name:").grid(row=5, column=0, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
         self.docker_artifact_name_var = tk.StringVar()
-        ttk.Entry(self.docker_frame, textvariable=self.docker_artifact_name_var, width=40).grid(row=6, column=1, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
+        ttk.Entry(self.docker_frame, textvariable=self.docker_artifact_name_var).grid(row=5, column=1, columnspan=2, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='ew')
 
         # Device type for docker
-        ttk.Label(self.docker_frame, text="Device Type:").grid(row=7, column=0, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
+        ttk.Label(self.docker_frame, text="Device Type:").grid(row=5, column=3, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
         self.docker_device_type_var = tk.StringVar(value=SUPPORTED_DEVICE_TYPES[0])
         self.docker_device_type_combo = ttk.Combobox(
             self.docker_frame, textvariable=self.docker_device_type_var,
-            values=SUPPORTED_DEVICE_TYPES, state="readonly", width=40)
-        self.docker_device_type_combo.grid(row=7, column=1, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
+            values=SUPPORTED_DEVICE_TYPES, state="readonly")
+        self.docker_device_type_combo.grid(row=5, column=4, columnspan=2, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='ew')
 
         # Output path for docker
-        ttk.Label(self.docker_frame, text="Output Path:").grid(row=8, column=0, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
+        ttk.Label(self.docker_frame, text="Output Path:").grid(row=6, column=0, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
         self.docker_output_path_var = tk.StringVar(value="docker-artifact.rdfm")
-        ttk.Entry(self.docker_frame, textvariable=self.docker_output_path_var, width=40).grid(row=8, column=1, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
+        ttk.Entry(self.docker_frame, textvariable=self.docker_output_path_var).grid(row=6, column=1, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='ew')
         ttk.Button(self.docker_frame, text="Browse...",
                   command=lambda: browse_save_file(
                       title="Save Docker Artifact As",
                         default_extension=".rdfm",
                         filetypes=FILETYPES_RDFM,
                         var_set=self.docker_output_path_var
-                  )).grid(row=8, column=2, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
+                  )).grid(row=6, column=2, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
 
-        # Create docker artifact button
+        # Create docker artifact button (centered at bottom)
         ttk.Button(self.docker_frame, text="Create Docker Artifact",
                   command=self.create_docker_container_artifact,
-                  style="Add.TButton").grid(row=9, column=1, padx=STANDARD_PAD, pady=10, sticky='w')
+                  style="Add.TButton").grid(row=7, column=1, columnspan=4, padx=STANDARD_PAD, pady=10)
 
     def read_artifact(self) -> None:
         """Read and display artifact information"""
