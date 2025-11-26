@@ -5,6 +5,7 @@ Base Tab - Abstract base class for all tabs
 import tkinter as tk
 from tkinter import ttk, messagebox
 from typing import List, Optional, Callable
+from pathlib import Path
 
 from app.theme import AetheroTheme
 from app.ui_constants import (
@@ -217,7 +218,8 @@ class BaseTab:
         row: int,
         values: Optional[List[str]] = None,
         width: int = 27,
-        readonly: bool = True
+        readonly: bool = True,
+        start_col: int = 0
     ) -> tuple[tk.StringVar, ttk.Combobox]:
         """Create a label and combobox pair.
 
@@ -228,6 +230,7 @@ class BaseTab:
             values: Initial values for the combobox
             width: Combobox width
             readonly: If True, set combobox to readonly state (default True)
+            start_col: Starting column for the widgets (default 0)
 
         Returns:
             Tuple of (StringVar, Combobox widget)
@@ -235,15 +238,16 @@ class BaseTab:
         var = tk.StringVar()
 
         ttk.Label(parent, text=label_text).grid(
-            row=row, column=0, sticky='w',
+            row=row, column=start_col, sticky='w',
             padx=STANDARD_PAD, pady=STANDARD_PAD
         )
         state = "readonly" if readonly else "normal"
         combo = ttk.Combobox(parent, textvariable=var, width=width, state=state)
         if values:
             combo['values'] = values
+            combo.set(combo['values'][0])
         combo.grid(
-            row=row, column=1, sticky='ew',
+            row=row, column=start_col + 1, sticky='ew',
             padx=STANDARD_PAD, pady=STANDARD_PAD
         )
 
@@ -304,3 +308,124 @@ class BaseTab:
                 self.frame.after(0, ui_callback)
 
         return callback
+
+    def create_labeled_entry_with_browse(
+        self,
+        parent: ttk.Frame,
+        label_text: str,
+        row: int,
+        entry_var: Optional[tk.StringVar] = None,
+        browse_title: str = "Select File",
+        browse_type: str = "file",
+        filetypes: Optional[List[tuple]] = None,
+        start_col: int = 0
+    ) -> tuple[tk.StringVar, ttk.Entry, ttk.Button]:
+        """Create a label, entry field, and browse button in one row.
+
+        Args:
+            parent: Parent widget
+            label_text: Text for the label
+            row: Grid row number
+            entry_var: StringVar for the entry (created if None)
+            browse_title: Title for the browse dialog
+            browse_type: Type of browse dialog ('file', 'directory', 'save')
+            filetypes: File type filters (for file/save dialogs)
+            start_col: Starting column for the widgets (default 0)
+
+        Returns:
+            Tuple of (StringVar, Entry widget, Button widget)
+        """
+        if entry_var is None:
+            entry_var = tk.StringVar()
+
+        ttk.Label(parent, text=label_text).grid(
+            row=row, column=start_col, sticky='w',
+            padx=STANDARD_PAD, pady=STANDARD_PAD
+        )
+
+        entry = ttk.Entry(parent, textvariable=entry_var)
+        entry.grid(
+            row=row, column=start_col + 1, sticky='ew',
+            padx=STANDARD_PAD, pady=STANDARD_PAD
+        )
+
+        # Create browse button with appropriate command
+        if browse_type == "directory":
+            browse_cmd = lambda: browse_directory(
+                title=browse_title,
+                var_set=entry_var
+            )
+        elif browse_type == "save":
+            browse_cmd = lambda: browse_save_file(
+                title=browse_title,
+                filetypes=filetypes or FILETYPES_ALL,
+                var_set=entry_var
+            )
+        else:  # "file"
+            browse_cmd = lambda: browse_file(
+                title=browse_title,
+                filetypes=filetypes or FILETYPES_ALL,
+                var_set=entry_var
+            )
+
+        button = ttk.Button(parent, text="Browse...", command=browse_cmd)
+        button.grid(
+            row=row, column=start_col + 2, sticky='w',
+            padx=STANDARD_PAD, pady=STANDARD_PAD
+        )
+
+        return entry_var, entry, button
+
+    def validate_required_fields(
+        self,
+        fields: dict[str, str],
+        title: str = "Input Error"
+    ) -> bool:
+        """Validate that required fields are filled in.
+
+        Args:
+            fields: Dictionary mapping field names to their values
+            title: Dialog title for warning
+
+        Returns:
+            True if all fields are valid, False otherwise
+        """
+        missing = [name for name, value in fields.items() if not value]
+
+        if missing:
+            self.show_warning(
+                title,
+                f"Please fill in the required fields:\n{', '.join(missing)}"
+            )
+            return False
+
+        return True
+
+    def resolve_output_path(
+        self,
+        path_str: str,
+        default_filename: str = "output.rdfm"
+    ) -> Path:
+        """Resolve and validate an output path with consistent logic.
+
+        Args:
+            path_str: User-provided path string
+            default_filename: Default filename if path is empty or directory
+
+        Returns:
+            Resolved Path object ready for use
+        """
+        from app.utils import resolve_path
+
+        if not path_str or path_str.strip() == "":
+            return Path.cwd() / default_filename
+
+        resolved = resolve_path(path_str)
+        if not resolved:
+            return Path.cwd() / default_filename
+
+        # If path is an existing directory, append default filename
+        if resolved.exists() and resolved.is_dir():
+            return resolved / default_filename
+
+        return resolved

@@ -38,15 +38,14 @@ class ArtifactTab(BaseTab):
         read_frame = ttk.LabelFrame(main_frame, text="Read Artifact")
         read_frame.pack(fill=tk.X, padx=STANDARD_PAD, pady=STANDARD_PAD)
 
-        ttk.Label(read_frame, text="Artifact File:").grid(row=0, column=0, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
-        self.read_path_var = tk.StringVar()
-        ttk.Entry(read_frame, textvariable=self.read_path_var, width=60).grid(row=0, column=1, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='ew')
-        ttk.Button(read_frame, text="Browse...",
-                  command=lambda: browse_file(
-                      "Select Artifact File",
-                      FILETYPES_RDFM,
-                      var_set=self.read_path_var
-                      )).grid(row=0, column=2, padx=STANDARD_PAD, pady=STANDARD_PAD)
+        self.read_path_var, _, _ = self.create_labeled_entry_with_browse(
+            read_frame,
+            "Artifact File:",
+            row=0,
+            browse_title="Select Artifact File",
+            browse_type="file",
+            filetypes=FILETYPES_RDFM
+        )
         ttk.Button(read_frame, text="Read",
                   command=self.read_artifact).grid(row=0, column=3, padx=STANDARD_PAD, pady=STANDARD_PAD)
 
@@ -143,35 +142,32 @@ class ArtifactTab(BaseTab):
 
         # LEFT COLUMN
         # Input file
-        ttk.Label(self.single_file_frame, text="Input File:").grid(row=0, column=0, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
-        self.single_file_input_var = tk.StringVar()
-        ttk.Entry(self.single_file_frame, textvariable=self.single_file_input_var).grid(row=0, column=1, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='ew')
-        ttk.Button(self.single_file_frame, text="Browse...",
-                  command=lambda: browse_file(
-                    title="Select Input File",
-                    filetypes=FILETYPES_ALL,
-                    var_set=self.single_file_input_var
-                  )).grid(row=0, column=2, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
+        self.single_file_input_var, _, _ = self.create_labeled_entry_with_browse(
+            self.single_file_frame,
+            "Input File:",
+            row=0,
+            browse_title="Select Input File",
+            filetypes=FILETYPES_ALL
+        )
 
         # Device type
-        ttk.Label(self.single_file_frame, text="Device Type:").grid(row=1, column=0, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
-        self.device_type_var = tk.StringVar(value=SUPPORTED_DEVICE_TYPES[0])
-        self.single_device_type_combo = ttk.Combobox(
-            self.single_file_frame, textvariable=self.device_type_var,
-            values=SUPPORTED_DEVICE_TYPES, state="readonly")
-        self.single_device_type_combo.grid(row=1, column=1, columnspan=2, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='ew')
+        self.device_type_var, self.single_device_type_combo = self.create_labeled_combo(
+            self.single_file_frame,
+            "Device Type:",
+            row=1,
+            values=SUPPORTED_DEVICE_TYPES
+        )
 
         # Output path
-        ttk.Label(self.single_file_frame, text="Output Path:").grid(row=2, column=0, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
-        self.single_file_output_path_var = tk.StringVar(value="artifact.rdfm")
-        ttk.Entry(self.single_file_frame, textvariable=self.single_file_output_path_var).grid(row=2, column=1, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='ew')
-        ttk.Button(self.single_file_frame, text="Browse...",
-                  command=lambda: browse_save_file(
-                      title="Save Artifact As",
-                        default_extension=".rdfm",
-                        filetypes=FILETYPES_RDFM,
-                        var_set=self.single_file_output_path_var
-                  )).grid(row=2, column=2, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
+        self.single_file_output_path_var, _, _ = self.create_labeled_entry_with_browse(
+            self.single_file_frame,
+            "Output Path:",
+            row=2,
+            entry_var=tk.StringVar(value="artifact.rdfm"),
+            browse_title="Save Artifact As",
+            browse_type="save",
+            filetypes=FILETYPES_RDFM
+        )
 
         # RIGHT COLUMN
         # Destination directory
@@ -207,60 +203,63 @@ class ArtifactTab(BaseTab):
 
         # LEFT COLUMN
         # Base artifact
-        ttk.Label(self.delta_frame, text="Base Artifact:").grid(row=0, column=0, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
-        self.base_artifact_var = tk.StringVar()
-        ttk.Entry(self.delta_frame, textvariable=self.base_artifact_var).grid(row=0, column=1, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='ew')
-        ttk.Button(self.delta_frame, text="Browse...",
-                  command=lambda: browse_file(
-                    title="Select Base Artifact",
-                    filetypes=FILETYPES_RDFM,
-                    var_set=self.base_artifact_var
-                  )).grid(row=0, column=2, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
+        self.base_artifact_var, _, _ = self.create_labeled_entry_with_browse(
+            self.delta_frame,
+            "Base Artifact:",
+            row=0,
+            browse_title="Select Base Artifact",
+            filetypes=FILETYPES_RDFM
+        )
 
         # Device type for delta
-        ttk.Label(self.delta_frame, text="Device Type:").grid(row=1, column=0, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
-        self.delta_device_type_var = tk.StringVar(value=SUPPORTED_DEVICE_TYPES[0])
-        self.delta_device_type_combo = ttk.Combobox(
-            self.delta_frame, textvariable=self.delta_device_type_var,
-            values=SUPPORTED_DEVICE_TYPES, state="readonly")
-        self.delta_device_type_combo.grid(row=1, column=1, columnspan=2, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='ew')
+        self.delta_device_type_var, self.delta_device_type_combo = self.create_labeled_combo(
+            self.delta_frame,
+            "Device Type:",
+            row=1,
+            values=SUPPORTED_DEVICE_TYPES
+        )
 
         # Delta algorithm
-        ttk.Label(self.delta_frame, text="Delta Algorithm:").grid(row=2, column=0, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
-        self.delta_algorithm_var = tk.StringVar(value="rsync")
-        self.delta_algo_combo = ttk.Combobox(
-            self.delta_frame, textvariable=self.delta_algorithm_var,
-            values=["rsync", "xdelta"], state="readonly")
-        self.delta_algo_combo.grid(row=2, column=1, columnspan=2, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='ew')
+        self.delta_algorithm_var, self.delta_algo_combo = self.create_labeled_combo(
+            self.delta_frame,
+            "Delta Algorithm:",
+            row=2,
+            values=["rsync", "xdelta"]
+        )
 
         # RIGHT COLUMN
         # Target artifact
-        ttk.Label(self.delta_frame, text="Target Artifact:").grid(row=0, column=3, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
-        self.target_artifact_var = tk.StringVar()
-        ttk.Entry(self.delta_frame, textvariable=self.target_artifact_var).grid(row=0, column=4, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='ew')
-        ttk.Button(self.delta_frame, text="Browse...",
-                  command=lambda: browse_file(
-                    title="Select Target Artifact",
-                    filetypes=FILETYPES_RDFM,
-                    var_set=self.target_artifact_var
-                  )).grid(row=0, column=5, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
+        self.target_artifact_var, _, _ = self.create_labeled_entry_with_browse(
+            self.delta_frame,
+            "Target Artifact:",
+            row=0,
+            browse_title="Select Target Artifact",
+            filetypes=FILETYPES_RDFM,
+            start_col=3
+        )
 
         # Artifact name for delta
-        ttk.Label(self.delta_frame, text="Artifact Name:").grid(row=1, column=3, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
+        ttk.Label(self.delta_frame, text="Artifact Name:").grid(
+            row=1, column=3, sticky='w',
+            padx=STANDARD_PAD, pady=STANDARD_PAD
+        )
         self.delta_artifact_name_var = tk.StringVar()
-        ttk.Entry(self.delta_frame, textvariable=self.delta_artifact_name_var).grid(row=1, column=4, columnspan=2, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='ew')
+        ttk.Entry(self.delta_frame, textvariable=self.delta_artifact_name_var).grid(
+            row=1, column=4, columnspan=2, sticky='ew',
+            padx=STANDARD_PAD, pady=STANDARD_PAD
+        )
 
         # Output path for delta
-        ttk.Label(self.delta_frame, text="Output Path:").grid(row=2, column=3, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
-        self.delta_output_path_var = tk.StringVar(value="delta-artifact.rdfm")
-        ttk.Entry(self.delta_frame, textvariable=self.delta_output_path_var).grid(row=2, column=4, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='ew')
-        ttk.Button(self.delta_frame, text="Browse...",
-                 command=lambda: browse_save_file(
-                      title="Save Delta Artifact As",
-                        default_extension=".rdfm",
-                        filetypes=FILETYPES_RDFM,
-                        var_set=self.delta_output_path_var
-                  )).grid(row=2, column=5, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
+        self.delta_output_path_var, _, _ = self.create_labeled_entry_with_browse(
+            self.delta_frame,
+            "Output Path:",
+            row=2,
+            entry_var=tk.StringVar(value="delta-artifact.rdfm"),
+            browse_title="Save Delta Artifact As",
+            browse_type="save",
+            filetypes=FILETYPES_RDFM,
+            start_col=3
+        )
 
         # Create delta button (centered at bottom)
         ttk.Button(self.delta_frame, text="Create Delta Artifact",
@@ -280,15 +279,13 @@ class ArtifactTab(BaseTab):
         ttk.Entry(self.docker_frame, textvariable=self.docker_app_name_var).grid(row=0, column=1, columnspan=2, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='ew')
 
         # Compose file
-        ttk.Label(self.docker_frame, text="Compose File:").grid(row=1, column=0, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
-        self.docker_compose_path_var = tk.StringVar()
-        ttk.Entry(self.docker_frame, textvariable=self.docker_compose_path_var).grid(row=1, column=1, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='ew')
-        ttk.Button(self.docker_frame, text="Browse...",
-                  command=lambda: browse_file(
-                      title="Select Compose File",
-                        filetypes=FILETYPES_COMPOSE,
-                        var_set=self.docker_compose_path_var
-                  )).grid(row=1, column=2, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
+        self.docker_compose_path_var, _, _ = self.create_labeled_entry_with_browse(
+            self.docker_frame,
+            "Compose File:",
+            row=1,
+            browse_title="Select Compose File",
+            filetypes=FILETYPES_COMPOSE
+        )
 
         # Docker image source selection
         ttk.Label(self.docker_frame, text="Image Source:").grid(row=2, column=0, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
@@ -303,17 +300,14 @@ class ArtifactTab(BaseTab):
                        command=self.toggle_image_source).pack(side=tk.LEFT, padx=10)
 
         # Image tarball path (for existing tarball)
-        ttk.Label(self.docker_frame, text="Image Tarball:").grid(row=3, column=0, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
-        self.docker_image_tarball_var = tk.StringVar()
-        self.docker_tarball_entry = ttk.Entry(self.docker_frame, textvariable=self.docker_image_tarball_var)
-        self.docker_tarball_entry.grid(row=3, column=1, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='ew')
-        self.docker_tarball_browse = ttk.Button(self.docker_frame, text="Browse...",
-                  command=lambda: browse_file(
-                        title="Select Docker Image Tarball",
-                        filetypes=FILETYPES_TAR,
-                        var_set=self.docker_image_tarball_var
-                  ))
-        self.docker_tarball_browse.grid(row=3, column=2, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
+        self.docker_image_tarball_var, self.docker_tarball_entry, self.docker_tarball_browse = \
+            self.create_labeled_entry_with_browse(
+                self.docker_frame,
+                "Image Tarball:",
+                row=3,
+                browse_title="Select Docker Image Tarball",
+                filetypes=FILETYPES_TAR
+            )
 
         # Docker image name (for export from Docker)
         ttk.Label(self.docker_frame, text="Docker Image:").grid(row=4, column=0, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
@@ -374,24 +368,24 @@ class ArtifactTab(BaseTab):
         ttk.Entry(self.docker_frame, textvariable=self.docker_artifact_name_var).grid(row=5, column=1, columnspan=2, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='ew')
 
         # Device type for docker
-        ttk.Label(self.docker_frame, text="Device Type:").grid(row=5, column=3, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
-        self.docker_device_type_var = tk.StringVar(value=SUPPORTED_DEVICE_TYPES[0])
-        self.docker_device_type_combo = ttk.Combobox(
-            self.docker_frame, textvariable=self.docker_device_type_var,
-            values=SUPPORTED_DEVICE_TYPES, state="readonly")
-        self.docker_device_type_combo.grid(row=5, column=4, columnspan=2, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='ew')
+        self.docker_device_type_var, self.docker_device_type_combo = self.create_labeled_combo(
+            self.docker_frame,
+            "Device Type:",
+            row=5,
+            values=SUPPORTED_DEVICE_TYPES,
+            start_col=3
+        )
 
         # Output path for docker
-        ttk.Label(self.docker_frame, text="Output Path:").grid(row=6, column=0, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
-        self.docker_output_path_var = tk.StringVar(value="docker-artifact.rdfm")
-        ttk.Entry(self.docker_frame, textvariable=self.docker_output_path_var).grid(row=6, column=1, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='ew')
-        ttk.Button(self.docker_frame, text="Browse...",
-                  command=lambda: browse_save_file(
-                      title="Save Docker Artifact As",
-                        default_extension=".rdfm",
-                        filetypes=FILETYPES_RDFM,
-                        var_set=self.docker_output_path_var
-                  )).grid(row=6, column=2, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
+        self.docker_output_path_var, _, _ = self.create_labeled_entry_with_browse(
+            self.docker_frame,
+            "Output Path:",
+            row=6,
+            entry_var=tk.StringVar(value="docker-artifact.rdfm"),
+            browse_title="Save Docker Artifact As",
+            browse_type="save",
+            filetypes=FILETYPES_RDFM
+        )
 
         # Create docker artifact button (centered at bottom)
         ttk.Button(self.docker_frame, text="Create Docker Artifact",
@@ -411,41 +405,34 @@ class ArtifactTab(BaseTab):
 
         # LEFT COLUMN
         # Input file
-        ttk.Label(self.zephyr_frame, text="Input File:").grid(row=0, column=0, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
-        self.zephyr_bin_input_var = tk.StringVar()
-        ttk.Entry(self.zephyr_frame, textvariable=self.zephyr_bin_input_var).grid(row=0, column=1, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='ew')
-        ttk.Button(self.zephyr_frame, text="Browse...",
-                  command=lambda: browse_file(
-                    title="Select Signed Binary Image",
-                    filetypes=FILETYPES_ZEPHYR,
-                    var_set=self.zephyr_bin_input_var
-                  )).grid(row=0, column=2, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
+        self.zephyr_bin_input_var, _, _ = self.create_labeled_entry_with_browse(
+            self.zephyr_frame,
+            "Input File:",
+            row=0,
+            browse_title="Select Signed Binary Image",
+            filetypes=FILETYPES_ZEPHYR
+        )
 
         # Device type
-        ttk.Label(self.zephyr_frame, text="Device Type:").grid(row=1, column=0, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
-        self.zephyr_device_type_var = tk.StringVar(value=SUPPORTED_DEVICE_TYPES[0])
-        self.zephyr_device_type_combo = ttk.Combobox(
-            self.zephyr_frame, textvariable=self.zephyr_device_type_var,
-            values=SUPPORTED_DEVICE_TYPES, state="readonly")
-        self.zephyr_device_type_combo.grid(row=1, column=1, columnspan=2, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='ew')
+        self.zephyr_device_type_var, self.zephyr_device_type_combo = self.create_labeled_combo(
+            self.zephyr_frame,
+            "Device Type:",
+            row=1,
+            values=SUPPORTED_DEVICE_TYPES
+        )
 
         # RIGHT COLUMN
-        # Artifact name - Not implemented yet?
-        # ttk.Label(self.zephyr_frame, text="Artifact Name:").grid(row=0, column=3, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
-        # self.zephyr_artifact_name_var = tk.StringVar()
-        # ttk.Entry(self.zephyr_frame, textvariable=self.zephyr_artifact_name_var).grid(row=0, column=4, columnspan=2, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='ew')
-
         # Output path
-        ttk.Label(self.zephyr_frame, text="Output Path:").grid(row=1, column=3, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
-        self.zephyr_output_path_var = tk.StringVar(value="zephyr-artifact.rdfm")
-        ttk.Entry(self.zephyr_frame, textvariable=self.zephyr_output_path_var).grid(row=1, column=4, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='ew')
-        ttk.Button(self.zephyr_frame, text="Browse...",
-                  command=lambda: browse_save_file(
-                      title="Save Artifact As",
-                        default_extension=".rdfm",
-                        filetypes=FILETYPES_RDFM,
-                        var_set=self.zephyr_output_path_var
-                  )).grid(row=1, column=5, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
+        self.zephyr_output_path_var, _, _ = self.create_labeled_entry_with_browse(
+            self.zephyr_frame,
+            "Output Path:",
+            row=1,
+            entry_var=tk.StringVar(value="zephyr-artifact.rdfm"),
+            browse_title="Save Artifact As",
+            browse_type="save",
+            filetypes=FILETYPES_RDFM,
+            start_col=3
+        )
 
         # Create button (centered at bottom)
         ttk.Button(self.zephyr_frame, text="Create Zephyr Artifact",
@@ -474,37 +461,22 @@ class ArtifactTab(BaseTab):
         dest_dir = self.dest_dir_var.get().strip()
         device_type = self.device_type_var.get().strip()
         artifact_name = self.artifact_name_var.get().strip()
-        output_path = self.single_file_output_path_var.get().strip()
         rollback = self.rollback_var.get()
 
         # Validate required fields
-        missing = []
-        if not input_file:
-            missing.append("Input File")
-        if not dest_dir:
-            missing.append("Dest Directory")
-        if not device_type:
-            missing.append("Device Type")
-        if not artifact_name:
-            missing.append("Artifact Name")
-
-        if missing:
-            messagebox.showwarning("Input Error",
-                f"Please fill in the required fields:\n{', '.join(missing)}")
+        if not self.validate_required_fields({
+            "Input File": input_file,
+            "Dest Directory": dest_dir,
+            "Device Type": device_type,
+            "Artifact Name": artifact_name
+        }):
             return
 
-        # Handle output path
-        if output_path == "":
-            output_path = Path.cwd() / "artifact.rdfm"
-        else:
-            resolved = resolve_path(output_path)
-            if resolved:
-                output_path = resolved
-            else:
-                output_path = Path.cwd() / "artifact.rdfm"
-
-        if output_path.exists() and output_path.is_dir():
-            output_path = output_path / "artifact.rdfm"
+        # Resolve output path
+        output_path = self.resolve_output_path(
+            self.single_file_output_path_var.get().strip(),
+            "artifact.rdfm"
+        )
 
         # Build command arguments
         args = [
@@ -530,33 +502,20 @@ class ArtifactTab(BaseTab):
         target_artifact = self.target_artifact_var.get().strip()
         device_type = self.delta_device_type_var.get().strip()
         artifact_name = self.delta_artifact_name_var.get().strip()
-        output_path = self.delta_output_path_var.get().strip()
         delta_algorithm = self.delta_algorithm_var.get().strip()
 
         # Validate required fields
-        missing = []
-        if not base_artifact:
-            missing.append("Base Artifact")
-        if not target_artifact:
-            missing.append("Target Artifact")
-
-        if missing:
-            messagebox.showwarning("Input Error",
-                f"Please fill in the required fields:\n{', '.join(missing)}")
+        if not self.validate_required_fields({
+            "Base Artifact": base_artifact,
+            "Target Artifact": target_artifact
+        }):
             return
 
-        # Handle output path
-        if output_path == "":
-            output_path = Path.cwd() / "delta-artifact.rdfm"
-        else:
-            resolved = resolve_path(output_path)
-            if resolved:
-                output_path = resolved
-            else:
-                output_path = Path.cwd() / "delta-artifact.rdfm"
-
-        if output_path.exists() and output_path.is_dir():
-            output_path = output_path / "delta-artifact.rdfm"
+        # Resolve output path
+        output_path = self.resolve_output_path(
+            self.delta_output_path_var.get().strip(),
+            "delta-artifact.rdfm"
+        )
 
         # Build command arguments
         args = [
@@ -779,24 +738,21 @@ class ArtifactTab(BaseTab):
         # Get additional files from listbox
         additional_files = list(self.docker_files_listbox.get(0, tk.END))
 
-        # Validate required fields
-        missing = []
-        if not app_name:
-            missing.append("App Name")
-        if not compose_file:
-            missing.append("Compose File")
-        if image_source == "tarball" and not image_tarball:
-            missing.append("Image Tarball")
-        if image_source == "export" and not docker_image_name:
-            missing.append("Docker Image Name")
-        if not artifact_name:
-            missing.append("Artifact Name")
-        if not device_type:
-            missing.append("Device Type")
+        # Validate required fields based on image source
+        required_fields = {
+            "App Name": app_name,
+            "Compose File": compose_file,
+            "Artifact Name": artifact_name,
+            "Device Type": device_type
+        }
 
-        if missing:
-            messagebox.showwarning("Input Error",
-                f"Please fill in the required fields:\n{', '.join(missing)}")
+        # Add conditional validation based on image source
+        if image_source == "tarball":
+            required_fields["Image Tarball"] = image_tarball
+        else:  # export
+            required_fields["Docker Image Name"] = docker_image_name
+
+        if not self.validate_required_fields(required_fields):
             return
 
         # Validate compose file exists
@@ -813,18 +769,8 @@ class ArtifactTab(BaseTab):
                 messagebox.showerror("Error", f"Image tarball not found: {image_tarball}")
                 return
 
-        # Handle output path
-        if output_path == "":
-            output_path = Path.cwd() / "docker-artifact.rdfm"
-        else:
-            resolved = resolve_path(output_path)
-            if resolved:
-                output_path = resolved
-            else:
-                output_path = Path.cwd() / "docker-artifact.rdfm"
-
-        if output_path.exists() and output_path.is_dir():
-            output_path = output_path / "docker-artifact.rdfm"
+        # Resolve output path
+        output_path = self.resolve_output_path(output_path, "docker-artifact.rdfm")
 
         # Run the creation in a separate thread
         def create_artifact():
@@ -972,36 +918,22 @@ class ArtifactTab(BaseTab):
         thread.start()
 
     def create_zephyr_artifact(self) -> None:
+        """Create a Zephyr MCUBoot artifact"""
         input_file = self.zephyr_bin_input_var.get().strip()
         device_type = self.zephyr_device_type_var.get().strip()
-        # artifact_name = self.zephyr_artifact_name_var.get().strip()
-        output_path = self.zephyr_output_path_var.get().strip()
-        # Validate required fields
-        missing = []
-        if not input_file:
-            missing.append("Input File")
-        if not device_type:
-            missing.append("Device Type")
-        # if not artifact_name:
-        #     missing.append("Artifact Name")
 
-        if missing:
-            messagebox.showwarning("Input Error",
-                f"Please fill in the required fields:\n{', '.join(missing)}")
+        # Validate required fields
+        if not self.validate_required_fields({
+            "Input File": input_file,
+            "Device Type": device_type
+        }):
             return
 
-        # Handle output path
-        if output_path == "":
-            output_path = Path.cwd() / "zephyr-artifact.rdfm"
-        else:
-            resolved = resolve_path(output_path)
-            if resolved:
-                output_path = resolved
-            else:
-                output_path = Path.cwd() / "zephyr-artifact.rdfm"
-
-        if output_path.exists() and output_path.is_dir():
-            output_path = output_path / "zephyr-artifact.rdfm"
+        # Resolve output path
+        output_path = self.resolve_output_path(
+            self.zephyr_output_path_var.get().strip(),
+            "zephyr-artifact.rdfm"
+        )
 
         # Build command arguments
         args = [

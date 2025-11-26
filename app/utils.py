@@ -277,8 +277,7 @@ def truncate_text(text: str, max_length: int, suffix: str = "...") -> str:
 # Common file type filters for dialogs
 FILETYPES_ALL: List[Tuple[str, str]] = [("All files", "*.*")]
 FILETYPES_RDFM: List[Tuple[str, str]] = [("RDFM artifacts", "*.rdfm")]
-FILETYPES_PEM: List[Tuple[str, str]] = [("PEM certificates", "*.pem"), ("All files", "*.*")]
-FILETYPES_TAR: List[Tuple[str, str]] = [("TAR archives", "*.tar"), ("Gzip archives", "*.tar.gz *.tgz")]
+FILETYPES_TAR: List[Tuple[str, str]] = [("Gzip archives", "*.tar.gz *.tgz")]
 FILETYPES_COMPOSE: List[Tuple[str, str]] = [("YAML Files", "*.yml *.yaml")]
 FILETYPES_ZEPHYR: List[Tuple[str, str]] = [("Zephyr Binaries", "*.bin")]
 FILETYPES_ROOTFS: List[Tuple[str, str]] = [
