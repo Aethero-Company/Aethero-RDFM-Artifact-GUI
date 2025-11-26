@@ -22,7 +22,7 @@ from app.ui_constants import (
     DEFAULT_DOCKER_APP_NAME
 )
 from app.utils import resolve_path, resolve_path_str, browse_file, browse_directory, browse_save_file
-from app.utils import FILETYPES_RDFM, FILETYPES_TAR, FILETYPES_ALL, FILETYPES_COMPOSE
+from app.utils import FILETYPES_RDFM, FILETYPES_TAR, FILETYPES_ALL, FILETYPES_COMPOSE, FILETYPES_ZEPHYR
 
 
 class ArtifactTab(BaseTab):
@@ -61,6 +61,7 @@ class ArtifactTab(BaseTab):
         self.setup_single_file_tab()
         self.setup_delta_tab()
         self.setup_docker_tab()
+        self.setup_zephyr_tab()
 
         # Output area at the bottom (40% of available space)
         output_frame = ttk.LabelFrame(main_frame, text="Output")
@@ -119,11 +120,21 @@ class ArtifactTab(BaseTab):
 
         self.setup_docker_frame()
 
+    def setup_zephyr_tab(self) -> None:
+        """Setup the Zephyr MCUBoot artifact tab"""
+        tab_frame = ttk.Frame(self.creator_notebook)
+        self.creator_notebook.add(tab_frame, text="Zephyr MCUBoot Artifact")
+
+        self.zephyr_frame = ttk.Frame(tab_frame)
+        self.zephyr_frame.pack(fill=tk.BOTH, expand=True, padx=STANDARD_PAD, pady=STANDARD_PAD)
+
+        self.setup_zephyr_frame()
+
     def setup_single_file_frame(self) -> None:
         """Setup UI components for single-file artifact creation"""
         # Configure grid columns for 2-column layout
-        self.single_file_frame.columnconfigure(1, weight=1)
-        self.single_file_frame.columnconfigure(4, weight=1)
+        self.single_file_frame.columnconfigure(1, weight=3)
+        self.single_file_frame.columnconfigure(4, weight=4)
 
         # Configure rows to expand vertically
         self.single_file_frame.rowconfigure(0, weight=1)
@@ -181,7 +192,7 @@ class ArtifactTab(BaseTab):
         # Create button (centered at bottom)
         ttk.Button(self.single_file_frame, text="Create Artifact",
                   command=self.create_single_file_artifact,
-                  style="Add.TButton").grid(row=3, column=1, columnspan=4, padx=STANDARD_PAD, pady=10)
+                  style="Add.TButton").grid(row=3, column=0, columnspan=6, padx=STANDARD_PAD, pady=10)
 
     def setup_delta_rootfs_frame(self) -> None:
         """Setup UI components for delta rootfs artifact creation"""
@@ -386,6 +397,60 @@ class ArtifactTab(BaseTab):
         ttk.Button(self.docker_frame, text="Create Docker Artifact",
                   command=self.create_docker_container_artifact,
                   style="Add.TButton").grid(row=7, column=1, columnspan=4, padx=STANDARD_PAD, pady=10)
+
+    def setup_zephyr_frame(self) -> None:
+        """Setup UI components for Zephyr MCUBoot artifact creation"""
+        # Configure grid columns for 2-column layout
+        self.zephyr_frame.columnconfigure(1, weight=1)
+        self.zephyr_frame.columnconfigure(4, weight=1)
+
+        # Configure rows to expand vertically
+        self.zephyr_frame.rowconfigure(0, weight=1)
+        self.zephyr_frame.rowconfigure(1, weight=1)
+        self.zephyr_frame.rowconfigure(2, weight=1)
+
+        # LEFT COLUMN
+        # Input file
+        ttk.Label(self.zephyr_frame, text="Input File:").grid(row=0, column=0, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
+        self.zephyr_bin_input_var = tk.StringVar()
+        ttk.Entry(self.zephyr_frame, textvariable=self.zephyr_bin_input_var).grid(row=0, column=1, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='ew')
+        ttk.Button(self.zephyr_frame, text="Browse...",
+                  command=lambda: browse_file(
+                    title="Select Signed Binary Image",
+                    filetypes=FILETYPES_ZEPHYR,
+                    var_set=self.zephyr_bin_input_var
+                  )).grid(row=0, column=2, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
+
+        # Device type
+        ttk.Label(self.zephyr_frame, text="Device Type:").grid(row=1, column=0, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
+        self.zephyr_device_type_var = tk.StringVar(value=SUPPORTED_DEVICE_TYPES[0])
+        self.zephyr_device_type_combo = ttk.Combobox(
+            self.zephyr_frame, textvariable=self.zephyr_device_type_var,
+            values=SUPPORTED_DEVICE_TYPES, state="readonly")
+        self.zephyr_device_type_combo.grid(row=1, column=1, columnspan=2, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='ew')
+
+        # RIGHT COLUMN
+        # Artifact name - Not implemented yet?
+        # ttk.Label(self.zephyr_frame, text="Artifact Name:").grid(row=0, column=3, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
+        # self.zephyr_artifact_name_var = tk.StringVar()
+        # ttk.Entry(self.zephyr_frame, textvariable=self.zephyr_artifact_name_var).grid(row=0, column=4, columnspan=2, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='ew')
+
+        # Output path
+        ttk.Label(self.zephyr_frame, text="Output Path:").grid(row=1, column=3, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
+        self.zephyr_output_path_var = tk.StringVar(value="zephyr-artifact.rdfm")
+        ttk.Entry(self.zephyr_frame, textvariable=self.zephyr_output_path_var).grid(row=1, column=4, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='ew')
+        ttk.Button(self.zephyr_frame, text="Browse...",
+                  command=lambda: browse_save_file(
+                      title="Save Artifact As",
+                        default_extension=".rdfm",
+                        filetypes=FILETYPES_RDFM,
+                        var_set=self.zephyr_output_path_var
+                  )).grid(row=1, column=5, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky='w')
+
+        # Create button (centered at bottom)
+        ttk.Button(self.zephyr_frame, text="Create Zephyr Artifact",
+                  command=self.create_zephyr_artifact,
+                  style="Add.TButton").grid(row=3, column=1, columnspan=4, padx=STANDARD_PAD, pady=10)
 
     def read_artifact(self) -> None:
         """Read and display artifact information"""
@@ -905,3 +970,49 @@ class ArtifactTab(BaseTab):
         # Start in a new thread
         thread = threading.Thread(target=create_artifact, daemon=True)
         thread.start()
+
+    def create_zephyr_artifact(self) -> None:
+        input_file = self.zephyr_bin_input_var.get().strip()
+        device_type = self.zephyr_device_type_var.get().strip()
+        # artifact_name = self.zephyr_artifact_name_var.get().strip()
+        output_path = self.zephyr_output_path_var.get().strip()
+        # Validate required fields
+        missing = []
+        if not input_file:
+            missing.append("Input File")
+        if not device_type:
+            missing.append("Device Type")
+        # if not artifact_name:
+        #     missing.append("Artifact Name")
+
+        if missing:
+            messagebox.showwarning("Input Error",
+                f"Please fill in the required fields:\n{', '.join(missing)}")
+            return
+
+        # Handle output path
+        if output_path == "":
+            output_path = Path.cwd() / "zephyr-artifact.rdfm"
+        else:
+            resolved = resolve_path(output_path)
+            if resolved:
+                output_path = resolved
+            else:
+                output_path = Path.cwd() / "zephyr-artifact.rdfm"
+
+        if output_path.exists() and output_path.is_dir():
+            output_path = output_path / "zephyr-artifact.rdfm"
+
+        # Build command arguments
+        args = [
+            "write", "zephyr-image",
+            "--file", input_file,
+            "--device-type", device_type,
+            # "--artifact-name", artifact_name,
+            "--output-path", str(output_path),
+        ]
+
+        self.cli_executor.run_artifact_command(
+            *args,
+            success_message=f"Artifact created successfully: {output_path}"
+        )
