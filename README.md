@@ -107,3 +107,13 @@ rm ~/.local/bin/rdfm-artifact
 ```bash
 pipx uninstall rdfm-artifact-gui
 ```
+
+## Development
+
+For development, install with dev dependencies:
+
+```bash
+pip install -e '.[dev]'
+```
+
+This project uses [ruff](https://github.com/astral-sh/ruff) for code formatting and linting

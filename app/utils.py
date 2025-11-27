@@ -5,10 +5,10 @@ This module provides shared utility functions to reduce code duplication
 across the application.
 """
 
-from pathlib import Path
-from typing import Optional, List, Tuple
 import tkinter as tk
-from tkinter import ttk, filedialog
+from pathlib import Path
+from tkinter import filedialog, ttk
+from typing import List, Optional, Tuple
 
 
 def resolve_path(path_str: str) -> Optional[Path]:
@@ -36,7 +36,7 @@ def resolve_path(path_str: str) -> Optional[Path]:
     path = Path(path_str)
 
     if not path.is_absolute():
-        if path.parts and path.parts[0] == '~':
+        if path.parts and path.parts[0] == "~":
             path = path.expanduser()
         else:
             path = (Path.cwd() / path).resolve()
@@ -68,6 +68,7 @@ def bind_combobox_selection_clear(combo: ttk.Combobox) -> None:
     Args:
         combo: Combobox widget to bind
     """
+
     def clear_selection(event):
         event.widget.selection_clear()
         event.widget.master.focus_set()
@@ -75,8 +76,9 @@ def bind_combobox_selection_clear(combo: ttk.Combobox) -> None:
     combo.bind("<<ComboboxSelected>>", clear_selection, add="+")
 
 
-def update_combobox_values(combos: List[ttk.Combobox], values: List[str],
-                          preserve_selection: bool = True) -> None:
+def update_combobox_values(
+    combos: List[ttk.Combobox], values: List[str], preserve_selection: bool = True
+) -> None:
     """Update multiple combobox widgets with new values.
 
     Args:
@@ -86,7 +88,7 @@ def update_combobox_values(combos: List[ttk.Combobox], values: List[str],
     """
     for combo in combos:
         current = combo.get()
-        combo['values'] = values
+        combo["values"] = values
 
         if preserve_selection and current in values:
             # Keep current selection
@@ -100,6 +102,7 @@ def update_combobox_values(combos: List[ttk.Combobox], values: List[str],
 
         # Clear selection highlight on readonly comboboxes after event processing
         combo.after_idle(combo.selection_clear)
+
 
 def _is_duplicate_filepath(listbox: tk.Listbox, filepath: str) -> bool:
     """Check if a filepath is already in the listbox.
@@ -119,11 +122,14 @@ def _is_duplicate_filepath(listbox: tk.Listbox, filepath: str) -> bool:
             return True
     return False
 
-def browse_file(title: str = "Select File",
-                filetypes: Optional[List[Tuple[str, str]]] = None,
-                var_set: Optional[tk.StringVar] = None,
-                list_insert: Optional[tk.Listbox] = None,
-                highlight_list_dupes: bool = True) -> str:
+
+def browse_file(
+    title: str = "Select File",
+    filetypes: Optional[List[Tuple[str, str]]] = None,
+    var_set: Optional[tk.StringVar] = None,
+    list_insert: Optional[tk.Listbox] = None,
+    highlight_list_dupes: bool = True,
+) -> str:
     """Open a file browser dialog and return the selected path.
 
     Args:
@@ -137,10 +143,7 @@ def browse_file(title: str = "Select File",
     if filetypes is None:
         filetypes = FILETYPES_ALL
 
-    filename = filedialog.askopenfilename(
-        title=title,
-        filetypes=filetypes
-    )
+    filename = filedialog.askopenfilename(title=title, filetypes=filetypes)
 
     if var_set is not None and filename:
         var_set.set(filename)
@@ -148,10 +151,13 @@ def browse_file(title: str = "Select File",
         if highlight_list_dupes and not _is_duplicate_filepath(list_insert, filename):
             list_insert.insert(tk.END, filename)
 
-def browse_directory(title: str = "Select Directory",
-                     var_set: Optional[tk.StringVar] = None,
-                     list_insert: Optional[tk.Listbox] = None,
-                     highlight_list_dupes: bool = True) -> str:
+
+def browse_directory(
+    title: str = "Select Directory",
+    var_set: Optional[tk.StringVar] = None,
+    list_insert: Optional[tk.Listbox] = None,
+    highlight_list_dupes: bool = True,
+) -> str:
     """Open a directory browser dialog and return the selected path.
 
     Args:
@@ -161,9 +167,7 @@ def browse_directory(title: str = "Select Directory",
     Returns:
         Selected directory path as string, or empty string if cancelled
     """
-    dirname = filedialog.askdirectory(
-        title=title
-    )
+    dirname = filedialog.askdirectory(title=title)
     if var_set is not None and dirname:
         var_set.set(dirname)
     if list_insert is not None and dirname:
@@ -171,10 +175,12 @@ def browse_directory(title: str = "Select Directory",
             list_insert.insert(tk.END, dirname)
 
 
-def browse_save_file(title: str = "Save File",
-                     filetypes: Optional[List[Tuple[str, str]]] = None,
-                     default_extension: str = "",
-                     var_set: Optional[tk.StringVar] = None) -> str:
+def browse_save_file(
+    title: str = "Save File",
+    filetypes: Optional[List[Tuple[str, str]]] = None,
+    default_extension: str = "",
+    var_set: Optional[tk.StringVar] = None,
+) -> str:
     """Open a save file dialog and return the selected path.
 
     Args:
@@ -190,9 +196,7 @@ def browse_save_file(title: str = "Save File",
         filetypes = FILETYPES_ALL
 
     filename = filedialog.asksaveasfilename(
-        title=title,
-        filetypes=filetypes,
-        defaultextension=default_extension
+        title=title, filetypes=filetypes, defaultextension=default_extension
     )
 
     if var_set is not None and filename:
@@ -232,7 +236,11 @@ def format_display_name(item_id: str, name: str) -> str:
     return f"(#{item_id}) {name}"
 
 
-def center_window(window: tk.Tk | tk.Toplevel, width: Optional[int] = None, height: Optional[int] = None) -> None:
+def center_window(
+    window: tk.Tk | tk.Toplevel,
+    width: Optional[int] = None,
+    height: Optional[int] = None,
+) -> None:
     """Center a window on the screen.
 
     Args:
@@ -253,7 +261,7 @@ def center_window(window: tk.Tk | tk.Toplevel, width: Optional[int] = None, heig
     x = (screen_width // 2) - (width // 2)
     y = (screen_height // 2) - (height // 2)
 
-    window.geometry(f'{width}x{height}+{x}+{y}')
+    window.geometry(f"{width}x{height}+{x}+{y}")
 
 
 def truncate_text(text: str, max_length: int, suffix: str = "...") -> str:
@@ -285,5 +293,5 @@ FILETYPES_ROOTFS: List[Tuple[str, str]] = [
     ("EXT4 images", "*.ext4"),
     ("SquashFS images", "*.squashfs"),
     ("TAR archives", "*.tar *.tar.gz *.tgz"),
-    ("All files", "*.*")
+    ("All files", "*.*"),
 ]

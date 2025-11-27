@@ -3,21 +3,24 @@ Base Tab - Abstract base class for all tabs
 """
 
 import tkinter as tk
-from tkinter import ttk, messagebox
-from typing import List, Optional, Callable
 from pathlib import Path
-
-from app.theme import AetheroTheme
-from app.ui_constants import (
-    STANDARD_PAD, OUTPUT_AREA_HEIGHT, OUTPUT_AREA_WIDTH
-)
-from app.utils import (
-    update_combobox_values, extract_id_from_display,
-    browse_file, browse_directory, browse_save_file,
-    bind_combobox_selection_clear, FILETYPES_ALL
-)
+from tkinter import messagebox, ttk
+from typing import Callable, List, Optional
+from functools import partial
 
 from app.cli_executor import CLIExecutor
+from app.theme import AetheroTheme
+from app.ui_constants import OUTPUT_AREA_HEIGHT, OUTPUT_AREA_WIDTH, STANDARD_PAD
+from app.utils import (
+    FILETYPES_ALL,
+    bind_combobox_selection_clear,
+    browse_directory,
+    browse_file,
+    browse_save_file,
+    extract_id_from_display,
+    update_combobox_values,
+)
+
 
 class BaseTab:
     """Abstract base class for all application tabs.
@@ -26,7 +29,12 @@ class BaseTab:
     for dropdown management and file dialogs.
     """
 
-    def __init__(self, parent: ttk.Frame, cli_executor: CLIExecutor, data_manager: Optional[object] = None) -> None:
+    def __init__(
+        self,
+        parent: ttk.Frame,
+        cli_executor: CLIExecutor,
+        data_manager: Optional[object] = None,
+    ) -> None:
         """Initialize the base tab
 
         Args:
@@ -56,20 +64,28 @@ class BaseTab:
             The created Text widget
         """
         output_frame = ttk.LabelFrame(parent, text=title)
-        output_frame.pack(fill='both', expand=True,
-                        padx=STANDARD_PAD, pady=STANDARD_PAD, side=tk.RIGHT)
+        output_frame.pack(
+            fill="both",
+            expand=True,
+            padx=STANDARD_PAD,
+            pady=STANDARD_PAD,
+            side=tk.RIGHT,
+        )
 
         output = tk.Text(
             output_frame,
             height=OUTPUT_AREA_HEIGHT,
             width=OUTPUT_AREA_WIDTH,
-            wrap=tk.WORD
+            wrap=tk.WORD,
         )
-        output.pack(fill='both', expand=True,
-                   padx=STANDARD_PAD, pady=STANDARD_PAD, side=tk.LEFT)
+        output.pack(
+            fill="both", expand=True, padx=STANDARD_PAD, pady=STANDARD_PAD, side=tk.LEFT
+        )
 
         # Add themed scrollbar
-        scrollbar = ttk.Scrollbar(output_frame, orient=tk.VERTICAL, command=output.yview)
+        scrollbar = ttk.Scrollbar(
+            output_frame, orient=tk.VERTICAL, command=output.yview
+        )
         scrollbar.pack(fill=tk.Y, side=tk.RIGHT)
         output.config(yscrollcommand=scrollbar.set)
 
@@ -79,9 +95,12 @@ class BaseTab:
 
         return output
 
-    def update_combobox_values(self, combos: List[ttk.Combobox],
-                               values: List[str],
-                               preserve_selection: bool = True) -> None:
+    def update_combobox_values(
+        self,
+        combos: List[ttk.Combobox],
+        values: List[str],
+        preserve_selection: bool = True,
+    ) -> None:
         """Update multiple combobox widgets with new values.
 
         Args:
@@ -104,12 +123,15 @@ class BaseTab:
         """
         return extract_id_from_display(combo.get())
 
-    def browse_and_set(self, var: tk.StringVar,
-                      title: str = "Select File",
-                      filetypes: List[tuple] = None,
-                      is_directory: bool = False,
-                      is_save: bool = False,
-                      default_extension: str = "") -> None:
+    def browse_and_set(
+        self,
+        var: tk.StringVar,
+        title: str = "Select File",
+        filetypes: List[tuple] = None,
+        is_directory: bool = False,
+        is_save: bool = False,
+        default_extension: str = "",
+    ) -> None:
         """Open a file dialog and set the result to a StringVar.
 
         Args:
@@ -126,13 +148,10 @@ class BaseTab:
             path = browse_save_file(
                 title=title,
                 filetypes=filetypes or FILETYPES_ALL,
-                default_extension=default_extension
+                default_extension=default_extension,
             )
         else:
-            path = browse_file(
-                title=title,
-                filetypes=filetypes or FILETYPES_ALL
-            )
+            path = browse_file(title=title, filetypes=filetypes or FILETYPES_ALL)
 
         if path:
             var.set(path)
@@ -182,7 +201,7 @@ class BaseTab:
         label_text: str,
         row: int,
         entry_var: Optional[tk.StringVar] = None,
-        width: int = 30
+        width: int = 30,
     ) -> tuple[tk.StringVar, ttk.Entry]:
         """Create a label and entry field pair.
 
@@ -200,14 +219,10 @@ class BaseTab:
             entry_var = tk.StringVar()
 
         ttk.Label(parent, text=label_text).grid(
-            row=row, column=0, sticky='w',
-            padx=STANDARD_PAD, pady=STANDARD_PAD
+            row=row, column=0, sticky="w", padx=STANDARD_PAD, pady=STANDARD_PAD
         )
         entry = ttk.Entry(parent, textvariable=entry_var, width=width)
-        entry.grid(
-            row=row, column=1, sticky='ew',
-            padx=STANDARD_PAD, pady=STANDARD_PAD
-        )
+        entry.grid(row=row, column=1, sticky="ew", padx=STANDARD_PAD, pady=STANDARD_PAD)
 
         return entry_var, entry
 
@@ -219,7 +234,7 @@ class BaseTab:
         values: Optional[List[str]] = None,
         width: int = 27,
         readonly: bool = True,
-        start_col: int = 0
+        start_col: int = 0,
     ) -> tuple[tk.StringVar, ttk.Combobox]:
         """Create a label and combobox pair.
 
@@ -238,17 +253,19 @@ class BaseTab:
         var = tk.StringVar()
 
         ttk.Label(parent, text=label_text).grid(
-            row=row, column=start_col, sticky='w',
-            padx=STANDARD_PAD, pady=STANDARD_PAD
+            row=row, column=start_col, sticky="w", padx=STANDARD_PAD, pady=STANDARD_PAD
         )
         state = "readonly" if readonly else "normal"
         combo = ttk.Combobox(parent, textvariable=var, width=width, state=state)
         if values:
-            combo['values'] = values
-            combo.set(combo['values'][0])
+            combo["values"] = values
+            combo.set(combo["values"][0])
         combo.grid(
-            row=row, column=start_col + 1, sticky='ew',
-            padx=STANDARD_PAD, pady=STANDARD_PAD
+            row=row,
+            column=start_col + 1,
+            sticky="ew",
+            padx=STANDARD_PAD,
+            pady=STANDARD_PAD,
         )
 
         # Bind selection clear for readonly comboboxes
@@ -282,9 +299,7 @@ class BaseTab:
         return frame
 
     def make_refresh_callback(
-        self,
-        refresh_types: List[str],
-        ui_callback: Optional[Callable[[], None]] = None
+        self, refresh_types: List[str], ui_callback: Optional[Callable[[], None]] = None
     ) -> Callable[[str], None]:
         """Create a callback that refreshes data and optionally updates UI.
 
@@ -296,14 +311,15 @@ class BaseTab:
         Returns:
             Callback function for use with cli_executor
         """
+
         def callback(output):
             for refresh_type in refresh_types:
-                if refresh_type == 'groups':
-                    self.cli_executor.output_queue.put(('refresh_groups', None))
-                elif refresh_type == 'packages':
-                    self.cli_executor.output_queue.put(('refresh_packages', None))
-                elif refresh_type == 'all':
-                    self.cli_executor.output_queue.put(('refresh_all', None))
+                if refresh_type == "groups":
+                    self.cli_executor.output_queue.put(("refresh_groups", None))
+                elif refresh_type == "packages":
+                    self.cli_executor.output_queue.put(("refresh_packages", None))
+                elif refresh_type == "all":
+                    self.cli_executor.output_queue.put(("refresh_all", None))
             if ui_callback:
                 self.frame.after(0, ui_callback)
 
@@ -318,7 +334,7 @@ class BaseTab:
         browse_title: str = "Select File",
         browse_type: str = "file",
         filetypes: Optional[List[tuple]] = None,
-        start_col: int = 0
+        start_col: int = 0,
     ) -> tuple[tk.StringVar, ttk.Entry, ttk.Button]:
         """Create a label, entry field, and browse button in one row.
 
@@ -339,47 +355,53 @@ class BaseTab:
             entry_var = tk.StringVar()
 
         ttk.Label(parent, text=label_text).grid(
-            row=row, column=start_col, sticky='w',
-            padx=STANDARD_PAD, pady=STANDARD_PAD
+            row=row, column=start_col, sticky="w", padx=STANDARD_PAD, pady=STANDARD_PAD
         )
 
         entry = ttk.Entry(parent, textvariable=entry_var)
         entry.grid(
-            row=row, column=start_col + 1, sticky='ew',
-            padx=STANDARD_PAD, pady=STANDARD_PAD
+            row=row,
+            column=start_col + 1,
+            sticky="ew",
+            padx=STANDARD_PAD,
+            pady=STANDARD_PAD,
         )
 
         # Create browse button with appropriate command
         if browse_type == "directory":
-            browse_cmd = lambda: browse_directory(
+            browse_cmd = partial(
+                browse_directory,
                 title=browse_title,
-                var_set=entry_var
+                var_set=entry_var,
             )
         elif browse_type == "save":
-            browse_cmd = lambda: browse_save_file(
+            browse_cmd = partial(
+                browse_save_file,
                 title=browse_title,
                 filetypes=filetypes or FILETYPES_ALL,
-                var_set=entry_var
+                var_set=entry_var,
             )
         else:  # "file"
-            browse_cmd = lambda: browse_file(
+            browse_cmd = partial(
+                browse_file,
                 title=browse_title,
                 filetypes=filetypes or FILETYPES_ALL,
-                var_set=entry_var
+                var_set=entry_var,
             )
 
         button = ttk.Button(parent, text="Browse...", command=browse_cmd)
         button.grid(
-            row=row, column=start_col + 2, sticky='w',
-            padx=STANDARD_PAD, pady=STANDARD_PAD
+            row=row,
+            column=start_col + 2,
+            sticky="w",
+            padx=STANDARD_PAD,
+            pady=STANDARD_PAD,
         )
 
         return entry_var, entry, button
 
     def validate_required_fields(
-        self,
-        fields: dict[str, str],
-        title: str = "Input Error"
+        self, fields: dict[str, str], title: str = "Input Error"
     ) -> bool:
         """Validate that required fields are filled in.
 
@@ -394,17 +416,14 @@ class BaseTab:
 
         if missing:
             self.show_warning(
-                title,
-                f"Please fill in the required fields:\n{', '.join(missing)}"
+                title, f"Please fill in the required fields:\n{', '.join(missing)}"
             )
             return False
 
         return True
 
     def resolve_output_path(
-        self,
-        path_str: str,
-        default_filename: str = "output.rdfm"
+        self, path_str: str, default_filename: str = "output.rdfm"
     ) -> Path:
         """Resolve and validate an output path with consistent logic.
 

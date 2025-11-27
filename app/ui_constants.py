@@ -12,11 +12,11 @@ from typing import List, Tuple
 # =============================================================================
 
 # Standard padding values used throughout the application
-STANDARD_PAD: int = 5        # Standard padx/pady for most widgets
-BUTTON_PAD: int = 2          # Padding between buttons in button frames
-SMALL_PAD: int = 2           # Small padding for compact layouts
-MEDIUM_PAD: int = 10         # Medium padding for section spacing
-LARGE_PAD: int = 15          # Large padding for major sections
+STANDARD_PAD: int = 5  # Standard padx/pady for most widgets
+BUTTON_PAD: int = 2  # Padding between buttons in button frames
+SMALL_PAD: int = 2  # Small padding for compact layouts
+MEDIUM_PAD: int = 10  # Medium padding for section spacing
+LARGE_PAD: int = 15  # Large padding for major sections
 
 # Pack side padding
 PACK_PADX: int = 5
@@ -65,8 +65,8 @@ QUEUE_POLL_INTERVAL_MS: int = 100
 AUTO_REFRESH_INTERVAL_SEC: int = 300  # 5 minutes
 
 # Status message display durations
-STATUS_MESSAGE_SHORT_MS: int = 3000   # 3 seconds
-STATUS_MESSAGE_LONG_MS: int = 5000    # 5 seconds
+STATUS_MESSAGE_SHORT_MS: int = 3000  # 3 seconds
+STATUS_MESSAGE_LONG_MS: int = 5000  # 5 seconds
 LOADING_COMPLETE_DELAY_MS: int = 200  # Brief delay to show completion
 
 # Command execution timeout (in seconds)

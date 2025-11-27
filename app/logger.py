@@ -14,7 +14,7 @@ from typing import Optional
 def setup_logging(
     log_file: Optional[str] = None,
     console_level: int = logging.INFO,
-    file_level: int = logging.DEBUG
+    file_level: int = logging.DEBUG,
 ) -> logging.Logger:
     """Setup application logging with both file and console handlers
 
@@ -27,7 +27,7 @@ def setup_logging(
         Configured logger instance
     """
     # Get the root logger for the app
-    logger = logging.getLogger('rdfm_artifact_gui')
+    logger = logging.getLogger("rdfm_artifact_gui")
     logger.setLevel(logging.DEBUG)  # Capture all levels, handlers will filter
 
     # Clear any existing handlers
@@ -35,12 +35,10 @@ def setup_logging(
 
     # Create formatters
     detailed_formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
+        "%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
     )
-    console_formatter = logging.Formatter(
-        '%(levelname)s: %(message)s'
-    )
+    console_formatter = logging.Formatter("%(levelname)s: %(message)s")
 
     # Console handler
     console_handler = logging.StreamHandler(sys.stdout)
@@ -50,16 +48,16 @@ def setup_logging(
 
     # Rotating file handler (5 files, 1MB each)
     if log_file is None:
-        log_dir = Path.home() / '.rdfm-artifact-gui'
+        log_dir = Path.home() / ".rdfm-artifact-gui"
         log_dir.mkdir(parents=True, exist_ok=True)
-        log_file = str(log_dir / 'app.log')
+        log_file = str(log_dir / "app.log")
 
     try:
         file_handler = logging.handlers.RotatingFileHandler(
             log_file,
             maxBytes=1024 * 1024,  # 1MB
             backupCount=5,
-            encoding='utf-8'
+            encoding="utf-8",
         )
         file_handler.setLevel(file_level)
         file_handler.setFormatter(detailed_formatter)
@@ -83,4 +81,4 @@ def get_logger(name: str) -> logging.Logger:
     Returns:
         Logger instance
     """
-    return logging.getLogger(f'rdfm_artifact_gui.{name}')
+    return logging.getLogger(f"rdfm_artifact_gui.{name}")
