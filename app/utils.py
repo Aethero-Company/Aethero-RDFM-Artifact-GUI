@@ -5,9 +5,18 @@ This module provides shared utility functions to reduce code duplication
 across the application.
 """
 
+import shutil
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, ttk
+from typing import TYPE_CHECKING
+
+from app.logger import get_logger
+
+if TYPE_CHECKING:
+    from app.cli_executor import CLIExecutor
+
+logger = get_logger(__name__)
 
 
 def resolve_path(path_str: str) -> Path | None:
@@ -68,7 +77,7 @@ def bind_combobox_selection_clear(combo: ttk.Combobox) -> None:
         combo: Combobox widget to bind
     """
 
-    def clear_selection(event):
+    def clear_selection(event: tk.Event) -> None:
         event.widget.selection_clear()
         event.widget.master.focus_set()
 
@@ -147,11 +156,12 @@ def browse_file(
     if filename:
         if var_set is not None:
             var_set.set(filename)
-        if list_insert is not None:
-            if highlight_list_dupes and not _is_duplicate_filepath(
-                list_insert, filename
-            ):
-                list_insert.insert(tk.END, filename)
+        if (
+            list_insert is not None
+            and highlight_list_dupes
+            and not _is_duplicate_filepath(list_insert, filename)
+        ):
+            list_insert.insert(tk.END, filename)
         return filename
     return ""
 
@@ -175,11 +185,12 @@ def browse_directory(
     if dirname:
         if var_set is not None:
             var_set.set(dirname)
-        if list_insert is not None:
-            if highlight_list_dupes and not _is_duplicate_filepath(
-                list_insert, dirname
-            ):
-                list_insert.insert(tk.END, dirname)
+        if (
+            list_insert is not None
+            and highlight_list_dupes
+            and not _is_duplicate_filepath(list_insert, dirname)
+        ):
+            list_insert.insert(tk.END, dirname)
         return dirname
     return ""
 
@@ -292,6 +303,24 @@ def truncate_text(text: str, max_length: int, suffix: str = "...") -> str:
 
     truncate_at = max_length - len(suffix)
     return text[:truncate_at] + suffix
+
+
+def try_copy_file(src: Path, dest: Path, cli_executor: "CLIExecutor") -> bool:
+    logger.info(f"Trying to copy file {src} to {dest}")
+    try:
+        shutil.copy2(src, dest)
+        cli_executor.output_queue.put(
+            (
+                "output",
+                f"Copied file: {src.name} to {dest}\n",
+            )
+        )
+        return True
+    except (OSError, PermissionError) as e:
+        cli_executor.output_queue.put(("output", f"Error copying file: {e}\n"))
+        cli_executor.output_queue.put(("status", "Failed to copy file"))
+        cli_executor.output_queue.put(("command_finished", None))
+        return False
 
 
 # Common file type filters for dialogs

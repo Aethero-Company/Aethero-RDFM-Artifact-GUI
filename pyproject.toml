@@ -53,8 +53,27 @@ package-dir = {"" = "."}
 app = ["*.json", "assets/*.png", "assets/*.jpg", "assets/*.ico"]
 
 [tool.ruff]
-# Ruff configuration - using defaults with minimal overrides
 target-version = "py311"
+line-length = 88
+
+[tool.ruff.lint]
+select = [
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "F",     # Pyflakes
+    "I",     # isort
+    "N",     # pep8-naming
+    "UP",    # pyupgrade
+    "B",     # flake8-bugbear
+    "C4",    # flake8-comprehensions
+    "SIM",   # flake8-simplify
+    "RET",   # flake8-return
+    "ARG",   # flake8-unused-arguments
+    "PTH",   # flake8-use-pathlib
+    "PL",    # Pylint
+    "RUF",   # Ruff-specific rules
+]
+extend-select = ["ANN"]
 
 [tool.ruff.format]
 quote-style = "double"

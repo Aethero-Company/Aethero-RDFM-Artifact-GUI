@@ -4,7 +4,6 @@ Single-file Artifact Tab - Creation of single-file RDFM artifacts
 
 import tkinter as tk
 from tkinter import ttk
-from typing import Any
 
 from app.tabs.base_tab import BaseTab
 from app.ui_constants import (
@@ -21,7 +20,7 @@ class SingleFileCreator(BaseTab):
     def create_output_area(self, parent: ttk.Frame, title: str = "Output") -> tk.Text:
         pass
 
-    def setup_ui(self) -> Any | None:
+    def setup_ui(self) -> None:
         self.single_file_frame = ttk.Frame(self.frame)
         self.single_file_frame.pack(
             fill=tk.BOTH, expand=True, padx=STANDARD_PAD, pady=STANDARD_PAD

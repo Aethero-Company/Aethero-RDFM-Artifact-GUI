@@ -5,7 +5,8 @@ CLI Executor - Handles execution of rdfm-artifact commands
 import queue
 import subprocess
 import threading
-from typing import Callable
+from collections.abc import Callable
+from functools import partial
 
 from app.logger import get_logger
 from app.ui_constants import COMMAND_DISPLAY_MAX_LENGTH
@@ -35,7 +36,8 @@ class CLIExecutor:
         """Cancel the currently running command
 
         Args:
-            force: If True, forcibly kill the process. If False, try graceful termination.
+            force: If True, forcibly kill the process.
+                   If False, try graceful termination.
 
         Returns:
             True if cancellation was successful, False otherwise
@@ -59,7 +61,10 @@ class CLIExecutor:
                         self.output_queue.put(
                             (
                                 "output",
-                                "\n\n--- Cancellation requested, waiting for graceful shutdown... ---\n",
+                                (
+                                    "\n\n--- Cancellation requested, "
+                                    "waiting for graceful shutdown... ---\n"
+                                ),
                             )
                         )
                         self.output_queue.put(("status", "Trying to cancel..."))
@@ -67,7 +72,7 @@ class CLIExecutor:
                     return True
                 except Exception as e:
                     self.output_queue.put(
-                        ("output", f"\nError cancelling command: {str(e)}\n")
+                        ("output", f"\nError cancelling command: {e!s}\n")
                     )
                     return False
         return False
@@ -105,6 +110,51 @@ class CLIExecutor:
             self.current_process = None
             self.is_running = False
 
+    # Read stdout in real-time
+    def _read_stdout(self, process: subprocess.Popen, output: list) -> None:
+        try:
+            for line in iter(process.stdout.readline, ""):
+                if line:
+                    output.append(line)
+                    self.output_queue.put(("output", line))
+        except Exception:
+            pass
+        finally:
+            process.stdout.close()
+
+    # Read stderr in real-time (rdfm-artifact uses stderr for progress)
+    def _read_stderr(self, process: subprocess.Popen, output: list) -> None:
+        try:
+            for line in iter(process.stderr.readline, ""):
+                if line:
+                    output.append(line)
+                    self.output_queue.put(("output", line))
+        except Exception:
+            pass
+        finally:
+            process.stderr.close()
+
+    def _run_process(self, process: subprocess.Popen) -> tuple[str, int]:
+        stdout_output = []
+        stderr_output = []
+
+        # Read stdout in real-time
+        read_stdout = partial(self._read_stdout, process, stdout_output)
+
+        read_stderr = partial(self._read_stderr, process, stderr_output)
+
+        # Start threads to read stdout and stderr
+        stdout_thread = threading.Thread(target=read_stdout, daemon=True)
+        stderr_thread = threading.Thread(target=read_stderr, daemon=True)
+        stdout_thread.start()
+        stderr_thread.start()
+
+        # Wait for process to complete
+        process.wait()
+        stdout_thread.join()
+        stderr_thread.join()
+        return "".join(stdout_output), process.returncode
+
     def run_artifact_command(
         self,
         *args: str,
@@ -116,13 +166,14 @@ class CLIExecutor:
         Args:
             *args: Command arguments (e.g., 'read', 'file.rdfm')
             callback: Function to call on success with stdout as argument
-            success_message: Message to display in output when command succeeds but produces no output
+            success_message: Message to display in output when command
+                succeeds but produces no output
         """
 
-        def execute():
+        def execute() -> None:
             try:
                 # Build command
-                cmd = ["rdfm-artifact"] + list(args)
+                cmd = ["rdfm-artifact", *list(args)]
                 logger.info(f"Executing command: {' '.join(cmd)}")
 
                 # Display command being run
@@ -143,51 +194,13 @@ class CLIExecutor:
                     self.is_running = True
 
                 process = self.current_process
-                stdout_output = []
-                stderr_output = []
 
-                # Read stdout in real-time
-                def read_stdout():
-                    try:
-                        for line in iter(process.stdout.readline, ""):
-                            if line:
-                                stdout_output.append(line)
-                                self.output_queue.put(("output", line))
-                    except Exception:
-                        pass
-                    finally:
-                        process.stdout.close()
-
-                # Read stderr in real-time (rdfm-artifact uses stderr for progress)
-                def read_stderr():
-                    try:
-                        for line in iter(process.stderr.readline, ""):
-                            if line:
-                                stderr_output.append(line)
-                                self.output_queue.put(("output", line))
-                    except Exception:
-                        pass
-                    finally:
-                        process.stderr.close()
-
-                # Start threads to read stdout and stderr
-                stdout_thread = threading.Thread(target=read_stdout, daemon=True)
-                stderr_thread = threading.Thread(target=read_stderr, daemon=True)
-                stdout_thread.start()
-                stderr_thread.start()
-
-                # Wait for process to complete
-                process.wait()
-                stdout_thread.join()
-                stderr_thread.join()
+                full_stdout, returncode = self._run_process(process)
 
                 # Mark as no longer running
                 with self.process_lock:
                     self.is_running = False
                     self.current_process = None
-
-                returncode = process.returncode
-                full_stdout = "".join(stdout_output)
 
                 if returncode == 0:
                     logger.info("Command completed successfully")
@@ -221,7 +234,7 @@ class CLIExecutor:
                 with self.process_lock:
                     self.is_running = False
                     self.current_process = None
-                self.output_queue.put(("output", f"Exception: {str(e)}"))
+                self.output_queue.put(("output", f"Exception: {e!s}"))
                 self.output_queue.put(("status", "Command failed"))
                 self.output_queue.put(("command_finished", None))
 

@@ -1,5 +1,6 @@
 """
-UI Constants - Centralized configuration for UI dimensions, timing, and other magic numbers
+UI Constants - Centralized configuration for UI dimensions,
+    timing, and other magic numbers
 
 This module provides a single source of truth for all UI-related constants
 to improve maintainability and consistency across the application.

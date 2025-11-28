@@ -6,17 +6,18 @@ import shutil
 import subprocess
 import tarfile
 import tempfile
+import threading
 import tkinter as tk
+from functools import partial
 from pathlib import Path
 from tkinter import messagebox, ttk
-from typing import Any
+from typing import TypedDict, Unpack
 
 from app.tabs.base_tab import BaseTab
 from app.theme import AetheroTheme
 from app.ui_constants import (
     DEFAULT_DOCKER_APP_NAME,
     DOCKER_CONTAINER_DEST_DIR,
-    DOCKER_IMAGE_FILENAME,
     STANDARD_PAD,
     SUPPORTED_DEVICE_TYPES,
 )
@@ -28,14 +29,29 @@ from app.utils import (
     browse_directory,
     browse_file,
     resolve_path,
+    try_copy_file,
 )
+
+
+class ArtifactParams(TypedDict):
+    """Parameters for Docker artifact creation"""
+
+    app_name: str
+    compose_file: Path
+    image_source: str
+    image_tarball: Path | None
+    docker_image_name: str
+    artifact_name: str
+    device_type: str
+    output_path: Path
+    additional_files: list[str]
 
 
 class DockerCreator(BaseTab):
     def create_output_area(self, parent: ttk.Frame, title: str = "Output") -> tk.Text:
         pass
 
-    def setup_ui(self) -> Any | None:
+    def setup_ui(self) -> None:
         self.docker_frame = ttk.Frame(self.frame)
         self.docker_frame.pack(
             fill=tk.BOTH, expand=True, padx=STANDARD_PAD, pady=STANDARD_PAD
@@ -303,41 +319,49 @@ class DockerCreator(BaseTab):
             docker_process.stderr.close()
             docker_returncode = docker_process.wait()
 
+            return_tuple: tuple[bool, str]
+
             # Check if cancelled
-            if (
-                docker_returncode == -15 or docker_returncode == -9
-            ):  # SIGTERM or SIGKILL
-                return False, "Export cancelled"
+            if docker_returncode in (-15, -9):  # SIGTERM or SIGKILL
+                return_tuple = False, "Export cancelled"
 
             # Check for errors
-            if docker_returncode != 0:
+            elif docker_returncode != 0:
                 error_msg = docker_stderr.decode() if docker_stderr else "Unknown error"
-                return False, (
-                    f"Error exporting Docker image: {error_msg}\n\n"
-                    "Note: Docker export may fail if:\n"
-                    "- Docker is not installed or running\n"
-                    "- The image doesn't exist locally\n"
-                    "- Running in a containerized environment without Docker access\n"
+                return_tuple = (
+                    False,
+                    (
+                        f"Error exporting Docker image: {error_msg}\n\n"
+                        "Note: Docker export may fail if:\n"
+                        "- Docker is not installed or running\n"
+                        "- The image doesn't exist locally\n"
+                        "- Running in a containerized environment"
+                        "without Docker access\n"
+                    ),
                 )
 
-            if gzip_process.returncode != 0:
+            elif gzip_process.returncode != 0:
                 error_msg = gzip_stderr.decode() if gzip_stderr else "Gzip error"
-                return False, f"Error compressing image: {error_msg}"
+                return_tuple = False, f"Error compressing image: {error_msg}"
 
             # Check if we got any data
-            if len(gzip_output) == 0:
-                return False, (
-                    "Error: Docker save produced no output.\n"
-                    "The image may not exist or Docker may not be accessible."
+            elif len(gzip_output) == 0:
+                return_tuple = (
+                    False,
+                    (
+                        "Error: Docker save produced no output.\n"
+                        "The image may not exist or Docker may not be accessible."
+                    ),
                 )
 
             # Write the output to file
-            with open(output_path, "wb") as f:
+            with Path.open(output_path, "wb") as f:
                 f.write(gzip_output)
 
             # Report size
             size_mb = len(gzip_output) / (1024 * 1024)
-            return True, f"Exported Docker image ({size_mb:.1f} MB)"
+            return_tuple = True, f"Exported Docker image ({size_mb:.1f} MB)"
+            return return_tuple
 
         except FileNotFoundError as e:
             return False, (
@@ -345,7 +369,7 @@ class DockerCreator(BaseTab):
                 "Docker or gzip command not found. Ensure Docker is installed."
             )
         except Exception as e:
-            return False, f"Error during Docker export: {str(e)}"
+            return False, f"Error during Docker export: {e!s}"
         finally:
             # Clear the process reference
             self.cli_executor.set_current_process(None, is_running=True)
@@ -376,17 +400,17 @@ class DockerCreator(BaseTab):
         Runs 'docker images' command in a background thread to get the list of
         available images and updates the Docker image combobox with the results.
         """
-        import threading
 
         # Show loading state immediately
         self.docker_refresh_images_btn.config(state="disabled", text="Loading...")
         self.cli_executor.output_queue.put(("status", "Loading Docker images..."))
 
-        def fetch_images():
+        def fetch_images() -> None:
             try:
                 # Run docker images command to get list of images
                 result = subprocess.run(
                     ["docker", "images", "--format", "{{.Repository}}:{{.Tag}}"],
+                    check=True,
                     capture_output=True,
                     text=True,
                     timeout=10,
@@ -470,6 +494,306 @@ class DockerCreator(BaseTab):
         if selection:
             self.docker_files_listbox.delete(selection[0])
 
+    def _validate_docker_fields(self, image_src: str) -> bool:
+        # Validate required fields based on image source
+        required_fields = {
+            "App Name": self.docker_app_name_var.get().strip(),
+            "Compose File": self.docker_compose_path_var.get().strip(),
+            "Artifact Name": self.docker_artifact_name_var.get().strip(),
+            "Device Type": self.docker_device_type_var.get().strip(),
+        }
+
+        # Add conditional validation based on image source
+        if image_src == "tarball":
+            required_fields["Image Tarball"] = (
+                self.docker_image_tarball_var.get().strip()
+            )
+        else:  # export
+            required_fields["Docker Image Name"] = (
+                self.docker_image_name_var.get().strip()
+            )
+
+        return self.validate_required_fields(required_fields)
+
+    def _resolve_paths(
+        self, compose_file: str, image_src: str, image_tarball: str, output_path: str
+    ) -> tuple[bool, Path | None, Path | None, Path]:
+        # Validate compose file exists
+        compose_path = resolve_path(compose_file)
+        if not compose_path or not compose_path.exists():
+            messagebox.showerror("Error", f"Compose file not found: {compose_file}")
+            return False, None, None, None
+
+        # Validate image tarball if using existing
+        image_tarball_path: Path | None = None
+        if image_src == "tarball":
+            image_tarball_path = resolve_path(image_tarball)
+            if not image_tarball_path or not image_tarball_path.exists():
+                messagebox.showerror(
+                    "Error", f"Image tarball not found: {image_tarball}"
+                )
+                return False, None, None, None
+
+        # Resolve output path
+        output_path = self.resolve_output_path(output_path, "docker-artifact.rdfm")
+
+        return True, compose_path, image_tarball_path, output_path
+
+    def _try_copy_additional_files(
+        self, additional_files: list[str], app_dir: Path
+    ) -> bool:
+        for file_path_str in additional_files:
+            src_path = resolve_path(file_path_str)
+            if not src_path or not src_path.exists():
+                self.cli_executor.output_queue.put(
+                    (
+                        "output",
+                        f"Warning: File not found, skipping: {file_path_str}\n",
+                    )
+                )
+                continue
+
+            try:
+                dest_path = app_dir / src_path.name
+                if src_path.is_dir():
+                    shutil.copytree(src_path, dest_path)
+                    self.cli_executor.output_queue.put(
+                        ("output", f"Copied directory: {src_path.name}/\n")
+                    )
+                else:
+                    shutil.copy2(src_path, dest_path)
+                    self.cli_executor.output_queue.put(
+                        ("output", f"Copied file: {src_path.name}\n")
+                    )
+            except (OSError, PermissionError, FileExistsError) as e:
+                self.cli_executor.output_queue.put(
+                    ("output", f"Error copying {src_path.name}: {e}\n")
+                )
+                self.cli_executor.output_queue.put(
+                    ("status", f"Failed to copy {src_path.name}")
+                )
+                self.cli_executor.output_queue.put(("command_finished", None))
+                return False
+        return True
+
+    def _generate_index_files(
+        self,
+        compose_file: Path,
+        image_filename: str,
+        app_dir: Path,
+        app_name: str,
+        temp_dir: str,
+    ) -> Path:
+        # Create inner index file (app_name/index)
+        inner_index_content = f"{compose_file.name}\n{image_filename}\n"
+        inner_index_path = app_dir / "index"
+        inner_index_path.write_text(inner_index_content)
+        self.cli_executor.output_queue.put(
+            ("output", f"Created inner index: {app_name}/index\n")
+        )
+        self.cli_executor.output_queue.put(
+            (
+                "output",
+                (f"  Contents: {compose_file.name} {image_filename}\n"),
+            )
+        )
+
+        # Create outer index file
+        outer_index_content = f"{app_name}/index\n"
+        outer_index_path = Path(temp_dir) / "index"
+        outer_index_path.write_text(outer_index_content)
+        self.cli_executor.output_queue.put(("output", "Created outer index: index\n"))
+        self.cli_executor.output_queue.put(
+            ("output", f"  Contents: {app_name}/index\n")
+        )
+        return outer_index_path
+
+    def _try_create_tarball(
+        self,
+        artifact_name: str,
+        temp_dir: str,
+        app_dir: Path,
+        app_name: str,
+        index_path: Path,
+    ) -> Path | None:
+        tarball_name = f"{artifact_name}.tar.gz"
+        tarball_path = Path(temp_dir) / tarball_name
+        self.cli_executor.output_queue.put(
+            ("output", f"\nCreating tarball: {tarball_name}\n")
+        )
+
+        try:
+            with tarfile.open(tarball_path, "w:gz") as tar:
+                # Add app directory
+                tar.add(app_dir, arcname=app_name)
+                # Add outer index
+                tar.add(index_path, arcname="index")
+
+            self.cli_executor.output_queue.put(
+                ("output", "Tarball created successfully\n")
+            )
+            return tarball_path
+        except (OSError, tarfile.TarError) as e:
+            self.cli_executor.output_queue.put(
+                ("output", f"Error creating tarball: {e}\n")
+            )
+            self.cli_executor.output_queue.put(("status", "Failed to create tarball"))
+            self.cli_executor.output_queue.put(("command_finished", None))
+            return None
+
+    def _check_cancellation(self) -> bool:
+        """Check if operation was cancelled.
+
+        Returns:
+            True if cancelled, False otherwise
+        """
+        if self.cli_executor.cancel_requested:
+            self.cli_executor.output_queue.put(
+                ("output", "\nOperation cancelled by user\n")
+            )
+            self.cli_executor.output_queue.put(("command_finished", None))
+            return True
+        return False
+
+    def _setup_directories(self, app_name: str) -> tuple[str, Path]:
+        """Create temporary directory structure.
+
+        Args:
+            app_name: Name of the app directory to create
+
+        Returns:
+            Tuple of (temp_dir path, app_dir Path)
+        """
+        temp_dir = tempfile.mkdtemp(prefix="rdfm_docker_")
+        self.cli_executor.output_queue.put(
+            ("output", f"Creating temporary directory: {temp_dir}\n")
+        )
+
+        app_dir = Path(temp_dir) / app_name
+        app_dir.mkdir()
+        self.cli_executor.output_queue.put(
+            ("output", f"Created app directory: {app_name}/\n")
+        )
+
+        return temp_dir, app_dir
+
+    def _handle_docker_image(
+        self,
+        image_source: str,
+        image_tarball: Path | None,
+        docker_image_name: str,
+        app_dir: Path,
+    ) -> str | None:
+        """Handle Docker image (tarball or export).
+
+        Args:
+            image_source: Either "tarball" or "export"
+            image_tarball: Path to tarball if using existing
+            docker_image_name: Docker image name if exporting
+            app_dir: App directory to save image to
+
+        Returns:
+            Image filename if successful, None if failed
+        """
+        if image_source == "tarball":
+            if not try_copy_file(
+                image_tarball,
+                app_dir / image_tarball.name,
+                self.cli_executor,
+            ):
+                return None
+            return image_tarball.name
+
+        # Export from Docker
+        self.cli_executor.output_queue.put(
+            ("output", f"Exporting Docker image: {docker_image_name}\n")
+        )
+        image_filename = "_".join(docker_image_name.split(":")) + ".tar.gz"
+        image_dest = app_dir / image_filename
+
+        success, message = self._export_docker_image(docker_image_name, image_dest)
+        if not success:
+            self.cli_executor.output_queue.put(("output", message + "\n"))
+            self.cli_executor.output_queue.put(("status", "Docker export failed"))
+            self.cli_executor.output_queue.put(("command_finished", None))
+            return None
+
+        self.cli_executor.output_queue.put(
+            ("output", f"Exported Docker image to: {image_filename} - {message}\n")
+        )
+        return image_filename
+
+    def _run_rdfm_artifact(
+        self,
+        artifact_name: str,
+        device_type: str,
+        tarball_path: Path,
+        output_path: Path,
+    ) -> bool:
+        """Run rdfm-artifact to create final artifact.
+
+        Args:
+            artifact_name: Name of the artifact
+            device_type: Device type
+            tarball_path: Path to the tarball
+            output_path: Output path for the artifact
+
+        Returns:
+            True if successful, False otherwise
+        """
+        self.cli_executor.output_queue.put(("output", "\nRunning rdfm-artifact...\n"))
+
+        args = [
+            "rdfm-artifact",
+            "write",
+            "single-file",
+            "--artifact-name",
+            artifact_name,
+            "--device-type",
+            device_type,
+            "--file",
+            str(tarball_path),
+            "--dest-dir",
+            DOCKER_CONTAINER_DEST_DIR,
+            "--output-path",
+            str(output_path),
+        ]
+
+        process = subprocess.Popen(
+            args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+        )
+
+        self.cli_executor.set_current_process(process, is_running=True)
+        stdout, stderr = process.communicate()
+        self.cli_executor.set_current_process(None, is_running=True)
+
+        # Check if cancelled
+        if process.returncode in (-15, -9):  # SIGTERM or SIGKILL
+            self.cli_executor.output_queue.put(
+                ("output", "\nOperation cancelled by user\n")
+            )
+            return False
+
+        if stdout:
+            self.cli_executor.output_queue.put(("output", stdout))
+        if stderr:
+            self.cli_executor.output_queue.put(("output", stderr))
+
+        if process.returncode == 0:
+            success_msg = (
+                f"\nDocker container artifact created successfully: {output_path}\n"
+            )
+            self.cli_executor.output_queue.put(("output", success_msg))
+            self.cli_executor.output_queue.put(
+                ("status", "Docker artifact created successfully")
+            )
+            return True
+
+        self.cli_executor.output_queue.put(
+            ("status", f"Command failed with code {process.returncode}")
+        )
+        return False
+
     def create_docker_container_artifact(self) -> None:
         """Create a Docker container artifact with auto-generated index files
 
@@ -481,7 +805,6 @@ class DockerCreator(BaseTab):
         5. Creating a tarball
         6. Running rdfm-artifact to create the final artifact
         """
-        import threading
 
         # Get values from UI
         app_name = self.docker_app_name_var.get().strip()
@@ -496,342 +819,145 @@ class DockerCreator(BaseTab):
         # Get additional files from listbox
         additional_files = list(self.docker_files_listbox.get(0, tk.END))
 
-        # Validate required fields based on image source
-        required_fields = {
-            "App Name": app_name,
-            "Compose File": compose_file,
-            "Artifact Name": artifact_name,
-            "Device Type": device_type,
+        if not self._validate_docker_fields(image_source):
+            return
+
+        success, compose_file, image_tarball, output_path = self._resolve_paths(
+            compose_file, image_source, image_tarball, output_path
+        )
+        if not success:
+            return
+
+        params: ArtifactParams = {
+            "app_name": app_name,
+            "compose_file": compose_file,
+            "image_source": image_source,
+            "image_tarball": image_tarball,
+            "docker_image_name": docker_image_name,
+            "artifact_name": artifact_name,
+            "device_type": device_type,
+            "output_path": output_path,
+            "additional_files": additional_files,
         }
 
-        # Add conditional validation based on image source
-        if image_source == "tarball":
-            required_fields["Image Tarball"] = image_tarball
-        else:  # export
-            required_fields["Docker Image Name"] = docker_image_name
-
-        if not self.validate_required_fields(required_fields):
-            return
-
-        # Validate compose file exists
-        compose_path = resolve_path(compose_file)
-        if not compose_path or not compose_path.exists():
-            messagebox.showerror("Error", f"Compose file not found: {compose_file}")
-            return
-
-        # Validate image tarball if using existing
-        image_tarball_path: Path | None = None
-        if image_source == "tarball":
-            image_tarball_path = resolve_path(image_tarball)
-            if not image_tarball_path or not image_tarball_path.exists():
-                messagebox.showerror(
-                    "Error", f"Image tarball not found: {image_tarball}"
-                )
-                return
-
-        # Resolve output path
-        output_path = self.resolve_output_path(output_path, "docker-artifact.rdfm")
-
-        # Run the creation in a separate thread
-        def create_artifact():
-            temp_dir = None
-            try:
-                # Mark as running for cancellation support
-                self.cli_executor.set_current_process(None, is_running=True)
-
-                self.cli_executor.output_queue.put(("clear", None))
-                self.cli_executor.output_queue.put(
-                    ("status", "Creating Docker container artifact...")
-                )
-                self.cli_executor.output_queue.put(("command_started", None))
-
-                # Create temporary directory for building the artifact structure
-                temp_dir = tempfile.mkdtemp(prefix="rdfm_docker_")
-                self.cli_executor.output_queue.put(
-                    ("output", f"Creating temporary directory: {temp_dir}\n")
-                )
-
-                # Create app directory
-                app_dir = Path(temp_dir) / app_name
-                app_dir.mkdir()
-                self.cli_executor.output_queue.put(
-                    ("output", f"Created app directory: {app_name}/\n")
-                )
-
-                # Copy compose file
-                # Check for cancellation before proceeding
-                if self.cli_executor.cancel_requested:
-                    self.cli_executor.output_queue.put(
-                        ("output", "\nOperation cancelled by user\n")
-                    )
-                    self.cli_executor.output_queue.put(("command_finished", None))
-                    return
-
-                try:
-                    compose_dest = app_dir / compose_path.name
-                    shutil.copy2(compose_path, compose_dest)
-                    self.cli_executor.output_queue.put(
-                        ("output", f"Copied compose file: {compose_path.name}\n")
-                    )
-                except (OSError, PermissionError) as e:
-                    self.cli_executor.output_queue.put(
-                        ("output", f"Error copying compose file: {e}\n")
-                    )
-                    self.cli_executor.output_queue.put(
-                        ("status", "Failed to copy compose file")
-                    )
-                    self.cli_executor.output_queue.put(("command_finished", None))
-                    return
-
-                # Handle Docker image
-                # Check for cancellation before proceeding
-                if self.cli_executor.cancel_requested:
-                    self.cli_executor.output_queue.put(
-                        ("output", "\nOperation cancelled by user\n")
-                    )
-                    self.cli_executor.output_queue.put(("command_finished", None))
-                    return
-
-                if image_source == "tarball":
-                    # Copy existing tarball
-                    try:
-                        image_dest = app_dir / image_tarball_path.name
-                        shutil.copy2(image_tarball_path, image_dest)
-                        image_filename = image_tarball_path.name
-                        self.cli_executor.output_queue.put(
-                            ("output", f"Copied image tarball: {image_filename}\n")
-                        )
-                    except (OSError, PermissionError) as e:
-                        self.cli_executor.output_queue.put(
-                            ("output", f"Error copying image tarball: {e}\n")
-                        )
-                        self.cli_executor.output_queue.put(
-                            ("status", "Failed to copy image tarball")
-                        )
-                        self.cli_executor.output_queue.put(("command_finished", None))
-                        return
-                else:
-                    # Export from Docker
-                    self.cli_executor.output_queue.put(
-                        ("output", f"Exporting Docker image: {docker_image_name}\n")
-                    )
-                    image_filename = DOCKER_IMAGE_FILENAME
-                    image_dest = app_dir / image_filename
-
-                    success, message = self._export_docker_image(
-                        docker_image_name, image_dest
-                    )
-                    if not success:
-                        self.cli_executor.output_queue.put(("output", message + "\n"))
-                        self.cli_executor.output_queue.put(
-                            ("status", "Docker export failed")
-                        )
-                        self.cli_executor.output_queue.put(("command_finished", None))
-                        return
-
-                    self.cli_executor.output_queue.put(
-                        (
-                            "output",
-                            f"Exported Docker image to: {image_filename} - {message}\n",
-                        )
-                    )
-
-                # Copy additional files
-                # Check for cancellation before proceeding
-                if self.cli_executor.cancel_requested:
-                    self.cli_executor.output_queue.put(
-                        ("output", "\nOperation cancelled by user\n")
-                    )
-                    self.cli_executor.output_queue.put(("command_finished", None))
-                    return
-
-                for file_path_str in additional_files:
-                    src_path = resolve_path(file_path_str)
-                    if not src_path or not src_path.exists():
-                        self.cli_executor.output_queue.put(
-                            (
-                                "output",
-                                f"Warning: File not found, skipping: {file_path_str}\n",
-                            )
-                        )
-                        continue
-
-                    try:
-                        dest_path = app_dir / src_path.name
-                        if src_path.is_dir():
-                            shutil.copytree(src_path, dest_path)
-                            self.cli_executor.output_queue.put(
-                                ("output", f"Copied directory: {src_path.name}/\n")
-                            )
-                        else:
-                            shutil.copy2(src_path, dest_path)
-                            self.cli_executor.output_queue.put(
-                                ("output", f"Copied file: {src_path.name}\n")
-                            )
-                    except (OSError, PermissionError, FileExistsError) as e:
-                        self.cli_executor.output_queue.put(
-                            ("output", f"Error copying {src_path.name}: {e}\n")
-                        )
-                        self.cli_executor.output_queue.put(
-                            ("status", f"Failed to copy {src_path.name}")
-                        )
-                        self.cli_executor.output_queue.put(("command_finished", None))
-                        return
-
-                # Create inner index file (app_name/index)
-                inner_index_content = f"{compose_path.name}\n{image_filename}\n"
-                inner_index_path = app_dir / "index"
-                inner_index_path.write_text(inner_index_content)
-                self.cli_executor.output_queue.put(
-                    ("output", f"Created inner index: {app_name}/index\n")
-                )
-                self.cli_executor.output_queue.put(
-                    ("output", f"  Contents: {compose_path.name}, {image_filename}\n")
-                )
-
-                # Create outer index file
-                outer_index_content = f"{app_name}/index\n"
-                outer_index_path = Path(temp_dir) / "index"
-                outer_index_path.write_text(outer_index_content)
-                self.cli_executor.output_queue.put(
-                    ("output", "Created outer index: index\n")
-                )
-                self.cli_executor.output_queue.put(
-                    ("output", f"  Contents: {app_name}/index\n")
-                )
-
-                # Create tarball
-                # Check for cancellation before proceeding
-                if self.cli_executor.cancel_requested:
-                    self.cli_executor.output_queue.put(
-                        ("output", "\nOperation cancelled by user\n")
-                    )
-                    self.cli_executor.output_queue.put(("command_finished", None))
-                    return
-
-                tarball_name = f"{artifact_name}.tar.gz"
-                tarball_path = Path(temp_dir) / tarball_name
-                self.cli_executor.output_queue.put(
-                    ("output", f"\nCreating tarball: {tarball_name}\n")
-                )
-
-                try:
-                    with tarfile.open(tarball_path, "w:gz") as tar:
-                        # Add app directory
-                        tar.add(app_dir, arcname=app_name)
-                        # Add outer index
-                        tar.add(outer_index_path, arcname="index")
-
-                    self.cli_executor.output_queue.put(
-                        ("output", "Tarball created successfully\n")
-                    )
-                except (OSError, tarfile.TarError) as e:
-                    self.cli_executor.output_queue.put(
-                        ("output", f"Error creating tarball: {e}\n")
-                    )
-                    self.cli_executor.output_queue.put(
-                        ("status", "Failed to create tarball")
-                    )
-                    self.cli_executor.output_queue.put(("command_finished", None))
-                    return
-
-                # Run rdfm-artifact to create the final artifact
-                # Check for cancellation before proceeding
-                if self.cli_executor.cancel_requested:
-                    self.cli_executor.output_queue.put(
-                        ("output", "\nOperation cancelled by user\n")
-                    )
-                    self.cli_executor.output_queue.put(("command_finished", None))
-                    return
-
-                self.cli_executor.output_queue.put(
-                    ("output", "\nRunning rdfm-artifact...\n")
-                )
-
-                args = [
-                    "rdfm-artifact",
-                    "write",
-                    "single-file",
-                    "--artifact-name",
-                    artifact_name,
-                    "--device-type",
-                    device_type,
-                    "--file",
-                    str(tarball_path),
-                    "--dest-dir",
-                    DOCKER_CONTAINER_DEST_DIR,
-                    "--output-path",
-                    str(output_path),
-                ]
-
-                # Use Popen instead of run so we can cancel it
-                process = subprocess.Popen(
-                    args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
-                )
-
-                # Register the process for cancellation
-                self.cli_executor.set_current_process(process, is_running=True)
-
-                # Wait for process and capture output
-                stdout, stderr = process.communicate()
-
-                # Clear the process reference
-                self.cli_executor.set_current_process(None, is_running=True)
-
-                # Check if cancelled
-                if (
-                    process.returncode == -15 or process.returncode == -9
-                ):  # SIGTERM or SIGKILL
-                    self.cli_executor.output_queue.put(
-                        ("output", "\nOperation cancelled by user\n")
-                    )
-                    self.cli_executor.output_queue.put(("command_finished", None))
-                    return
-
-                if stdout:
-                    self.cli_executor.output_queue.put(("output", stdout))
-                if stderr:
-                    self.cli_executor.output_queue.put(("output", stderr))
-
-                if process.returncode == 0:
-                    self.cli_executor.output_queue.put(
-                        (
-                            "output",
-                            f"\nDocker container artifact created successfully: {output_path}\n",
-                        )
-                    )
-                    self.cli_executor.output_queue.put(
-                        ("status", "Docker artifact created successfully")
-                    )
-                else:
-                    self.cli_executor.output_queue.put(
-                        ("status", f"Command failed with code {process.returncode}")
-                    )
-
-                self.cli_executor.output_queue.put(("command_finished", None))
-
-            except Exception as e:
-                self.cli_executor.output_queue.put(("output", f"Error: {str(e)}\n"))
-                self.cli_executor.output_queue.put(
-                    ("status", "Docker artifact creation failed")
-                )
-                self.cli_executor.output_queue.put(("command_finished", None))
-            finally:
-                # Reset process tracking
-                self.cli_executor.clear_current_process()
-
-                # Cleanup temp directory
-                if temp_dir and Path(temp_dir).exists():
-                    try:
-                        shutil.rmtree(temp_dir)
-                        self.cli_executor.output_queue.put(
-                            ("output", "\nCleaned up temporary directory\n")
-                        )
-                    except Exception as e:
-                        self.cli_executor.output_queue.put(
-                            ("output", f"Warning: Could not clean up temp dir: {e}\n")
-                        )
+        artifact_creator = partial(self.create_artifact, **params)
 
         # Start in a new thread
-        thread = threading.Thread(target=create_artifact, daemon=True)
+        thread = threading.Thread(target=artifact_creator, daemon=True)
         thread.start()
+
+    def _execute_artifact_steps(
+        self, params: ArtifactParams, app_dir: Path, temp_dir: str
+    ) -> bool:
+        """Execute the main artifact creation steps.
+
+        Args:
+            params: Artifact creation parameters
+            app_dir: App directory path
+            temp_dir: Temporary directory path
+
+        Returns:
+            True if all steps succeeded, False otherwise
+        """
+        # Copy compose file
+        if not try_copy_file(
+            params["compose_file"],
+            app_dir / params["compose_file"].name,
+            self.cli_executor,
+        ):
+            return False
+
+        # Handle Docker image
+        if not self._check_cancellation():
+            image_filename = self._handle_docker_image(
+                params["image_source"],
+                params["image_tarball"],
+                params["docker_image_name"],
+                app_dir,
+            )
+        if not image_filename:
+            return False
+
+        # Copy additional files
+        if not self._check_cancellation or not self._try_copy_additional_files(
+            params["additional_files"], app_dir
+        ):
+            return False
+
+        # Generate index files
+        if not self._check_cancellation():
+            outer_index_path = self._generate_index_files(
+                params["compose_file"],
+                image_filename,
+                app_dir,
+                params["app_name"],
+                temp_dir,
+            )
+
+        # Create tarball
+        if not self._check_cancellation():
+            tarball_path = self._try_create_tarball(
+                params["artifact_name"],
+                temp_dir,
+                app_dir,
+                params["app_name"],
+                outer_index_path,
+            )
+        if not tarball_path:
+            return False
+
+        # Run rdfm-artifact
+        if not self._check_cancellation():
+            return self._run_rdfm_artifact(
+                params["artifact_name"],
+                params["device_type"],
+                tarball_path,
+                params["output_path"],
+            )
+        return False
+
+    # Run the creation in a separate thread
+    def create_artifact(self, **kwargs: Unpack[ArtifactParams]) -> None:
+        """Create Docker artifact in a background thread.
+
+        Args:
+            **kwargs: Artifact creation parameters (see ArtifactParams)
+        """
+        temp_dir = None
+        try:
+            params: ArtifactParams = kwargs  # type: ignore[assignment]
+
+            self.cli_executor.set_current_process(None, is_running=True)
+            self.cli_executor.output_queue.put(("clear", None))
+            self.cli_executor.output_queue.put(
+                ("status", "Creating Docker container artifact...")
+            )
+            self.cli_executor.output_queue.put(("command_started", None))
+
+            # Setup directories
+            temp_dir, app_dir = self._setup_directories(params["app_name"])
+
+            # Execute steps with cancellation checks
+            if not self._check_cancellation():
+                self._execute_artifact_steps(params, app_dir, temp_dir)
+
+            self.cli_executor.output_queue.put(("command_finished", None))
+
+        except Exception as e:
+            self.cli_executor.output_queue.put(("output", f"Error: {e!s}\n"))
+            self.cli_executor.output_queue.put(
+                ("status", "Docker artifact creation failed")
+            )
+            self.cli_executor.output_queue.put(("command_finished", None))
+        finally:
+            self.cli_executor.clear_current_process()
+            if temp_dir and Path(temp_dir).exists():
+                try:
+                    shutil.rmtree(temp_dir)
+                    self.cli_executor.output_queue.put(
+                        ("output", "\nCleaned up temporary directory\n")
+                    )
+                except Exception as e:
+                    self.cli_executor.output_queue.put(
+                        ("output", f"Warning: Could not clean up temp dir: {e}\n")
+                    )

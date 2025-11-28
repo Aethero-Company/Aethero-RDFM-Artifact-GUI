@@ -34,7 +34,7 @@ def setup_logging(
 
     # Create formatters
     detailed_formatter = logging.Formatter(
-        "%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s",
+        "%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s",  # noqa: E501
         datefmt="%Y-%m-%d %H:%M:%S",
     )
     console_formatter = logging.Formatter("%(levelname)s: %(message)s")

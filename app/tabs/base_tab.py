@@ -6,7 +6,6 @@ import tkinter as tk
 from functools import partial
 from pathlib import Path
 from tkinter import messagebox, ttk
-from typing import Callable
 
 from app.cli_executor import CLIExecutor
 from app.theme import AetheroTheme
@@ -18,6 +17,7 @@ from app.utils import (
     browse_file,
     browse_save_file,
     extract_id_from_display,
+    resolve_path,
     update_combobox_values,
 )
 
@@ -122,7 +122,7 @@ class BaseTab:
         """
         return extract_id_from_display(combo.get())
 
-    def browse_and_set(
+    def browse_and_set(  # noqa: PLR0913
         self,
         var: tk.StringVar,
         title: str = "Select File",
@@ -225,7 +225,7 @@ class BaseTab:
 
         return entry_var, entry
 
-    def create_labeled_combo(
+    def create_labeled_combo(  # noqa: PLR0913
         self,
         parent: ttk.Frame,
         label_text: str,
@@ -297,34 +297,7 @@ class BaseTab:
         frame.pack(fill=tk.X, padx=STANDARD_PAD, pady=STANDARD_PAD)
         return frame
 
-    def make_refresh_callback(
-        self, refresh_types: list[str], ui_callback: Callable[[], None] | None = None
-    ) -> Callable[[str], None]:
-        """Create a callback that refreshes data and optionally updates UI.
-
-        Args:
-            refresh_types: List of data types to refresh
-                          ('groups', 'packages', 'devices', 'all')
-            ui_callback: Optional function to call after refresh
-
-        Returns:
-            Callback function for use with cli_executor
-        """
-
-        def callback(output):
-            for refresh_type in refresh_types:
-                if refresh_type == "groups":
-                    self.cli_executor.output_queue.put(("refresh_groups", None))
-                elif refresh_type == "packages":
-                    self.cli_executor.output_queue.put(("refresh_packages", None))
-                elif refresh_type == "all":
-                    self.cli_executor.output_queue.put(("refresh_all", None))
-            if ui_callback:
-                self.frame.after(0, ui_callback)
-
-        return callback
-
-    def create_labeled_entry_with_browse(
+    def create_labeled_entry_with_browse(  # noqa: PLR0913
         self,
         parent: ttk.Frame,
         label_text: str,
@@ -433,7 +406,6 @@ class BaseTab:
         Returns:
             Resolved Path object ready for use
         """
-        from app.utils import resolve_path
 
         if not path_str or path_str.strip() == "":
             return Path.cwd() / default_filename

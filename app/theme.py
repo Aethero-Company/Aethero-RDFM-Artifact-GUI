@@ -57,6 +57,8 @@ class AetheroTheme:
     TAB_BG = "#0a0a0a"  # Tab background
     TAB_BORDER = "#a1a1a1"  # Tab bottom border
 
+    TK_VERSION_CONSOLAS = 8.6
+
     @classmethod
     def get_logo_path(cls) -> str | None:
         """Get the path to the Aethero logo
@@ -375,7 +377,9 @@ class AetheroTheme:
             insertbackground=cls.CYAN_ACCENT,
             selectbackground=cls.PRIMARY_BLUE,
             selectforeground=cls.PRIMARY_TEXT,
-            font=("Consolas", 10) if tk.TkVersion >= 8.6 else ("Courier", 10),
+            font=("Consolas", 10)
+            if tk.TkVersion >= cls.TK_VERSION_CONSOLAS
+            else ("Courier", 10),
             relief="flat",
             borderwidth=1,
             highlightthickness=1,

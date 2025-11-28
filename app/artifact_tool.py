@@ -10,6 +10,8 @@ import queue
 import tkinter as tk
 from tkinter import ttk
 
+from PIL import Image, ImageTk
+
 from app.cli_executor import CLIExecutor
 from app.logger import get_logger, setup_logging
 from app.tabs.artifact_tab import ArtifactTab
@@ -46,7 +48,7 @@ class ArtifactTool:
         self.app_icon = AetheroTheme.set_app_icon(root)
 
         # Queue for thread-safe GUI updates
-        self.output_queue: "queue.Queue[tuple]" = queue.Queue()
+        self.output_queue: queue.Queue[tuple] = queue.Queue()
 
         # Initialize CLI executor for running rdfm-artifact commands
         self.cli_executor = CLIExecutor(self.output_queue)
@@ -75,8 +77,6 @@ class ArtifactTool:
         logo_path = AetheroTheme.get_logo_path()
         if logo_path:
             try:
-                from PIL import Image, ImageTk
-
                 img = Image.open(logo_path)
                 img.thumbnail(HEADER_LOGO_SIZE, Image.Resampling.LANCZOS)
                 self.logo_image = ImageTk.PhotoImage(img)
