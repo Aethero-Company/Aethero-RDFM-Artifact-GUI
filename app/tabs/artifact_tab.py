@@ -9,7 +9,6 @@ import tempfile
 import tkinter as tk
 from pathlib import Path
 from tkinter import messagebox, ttk
-from typing import Optional, Tuple
 
 from app.tabs.base_tab import BaseTab
 from app.theme import AetheroTheme
@@ -95,8 +94,7 @@ class ArtifactTab(BaseTab):
         self.output.config(yscrollcommand=scrollbar.set)
 
         # Apply theme styling to output text widget
-        if AetheroTheme:
-            AetheroTheme.configure_text_widget(self.output)
+        AetheroTheme.configure_text_widget(self.output)
 
         # Bind selection clear to all readonly comboboxes
         self.bind_selection_clear(
@@ -448,8 +446,7 @@ class ArtifactTab(BaseTab):
         )
 
         # Apply theme styling to listbox
-        if AetheroTheme:
-            AetheroTheme.configure_listbox(self.docker_files_listbox)
+        AetheroTheme.configure_listbox(self.docker_files_listbox)
 
         # Buttons for adding/removing files
         files_buttons = ttk.Frame(self.docker_frame)
@@ -687,7 +684,7 @@ class ArtifactTab(BaseTab):
 
     def _export_docker_image(
         self, docker_image_name: str, output_path: Path
-    ) -> Tuple[bool, str]:
+    ) -> tuple[bool, str]:
         """Export a Docker image to a tar.gz file
 
         Args:
@@ -705,10 +702,6 @@ class ArtifactTab(BaseTab):
                 stderr=subprocess.PIPE,
             )
 
-            # Register process with cli_executor for cancellation support
-            with self.cli_executor.process_lock:
-                self.cli_executor.current_process = docker_process
-
             gzip_process = subprocess.Popen(
                 ["gzip"],
                 stdin=docker_process.stdout,
@@ -719,8 +712,16 @@ class ArtifactTab(BaseTab):
             # Allow docker_process to receive SIGPIPE if gzip exits
             docker_process.stdout.close()
 
+            # Register gzip process for cancellation
+            self.cli_executor.set_current_process(gzip_process, is_running=True)
+
             # Get the gzipped output
             gzip_output, gzip_stderr = gzip_process.communicate()
+
+            # Terminate docker process if it's still running
+            if docker_process.poll() is None:
+                docker_process.terminate()
+                docker_process.wait()
 
             # Wait for docker process to finish and get stderr
             docker_stderr = docker_process.stderr.read()
@@ -770,9 +771,16 @@ class ArtifactTab(BaseTab):
             )
         except Exception as e:
             return False, f"Error during Docker export: {str(e)}"
+        finally:
+            # Clear the process reference
+            self.cli_executor.set_current_process(None, is_running=True)
 
     def toggle_image_source(self) -> None:
-        """Toggle between tarball and Docker export modes"""
+        """Toggle between tarball and Docker export modes.
+
+        Enables/disables the appropriate UI elements based on whether the user
+        wants to use an existing tarball or export from Docker.
+        """
         source = self.docker_image_source_var.get()
         if source == "tarball":
             self.docker_tarball_entry.config(state="normal")
@@ -788,7 +796,11 @@ class ArtifactTab(BaseTab):
             self.refresh_docker_images()
 
     def refresh_docker_images(self) -> None:
-        """Refresh the list of available Docker images from the local Docker daemon"""
+        """Refresh the list of available Docker images from the local Docker daemon.
+
+        Runs 'docker images' command in a background thread to get the list of
+        available images and updates the Docker image combobox with the results.
+        """
         import threading
 
         # Show loading state immediately
@@ -846,10 +858,13 @@ class ArtifactTab(BaseTab):
         thread.start()
 
     def _update_docker_images(self, images: list[str]) -> None:
-        """Update the Docker images combobox (called from main thread)
+        """Update the Docker images combobox (called from main thread).
+
+        This method must be called from the main thread to safely update
+        the UI with the fetched Docker images.
 
         Args:
-            images: List of Docker image names
+            images: List of Docker image names in "repository:tag" format
         """
         # Update the combobox values
         self.docker_image_combo["values"] = images
@@ -871,7 +886,11 @@ class ArtifactTab(BaseTab):
         self.docker_refresh_images_btn.config(state="normal", text="Refresh")
 
     def remove_docker_file(self) -> None:
-        """Remove the currently selected file from the additional files list"""
+        """Remove the currently selected file from the additional files list.
+
+        Removes the selected item from the Docker additional files listbox.
+        Does nothing if no item is selected.
+        """
         selection = self.docker_files_listbox.curselection()
         if selection:
             self.docker_files_listbox.delete(selection[0])
@@ -926,7 +945,7 @@ class ArtifactTab(BaseTab):
             return
 
         # Validate image tarball if using existing
-        image_tarball_path: Optional[Path] = None
+        image_tarball_path: Path | None = None
         if image_source == "tarball":
             image_tarball_path = resolve_path(image_tarball)
             if not image_tarball_path or not image_tarball_path.exists():
@@ -943,8 +962,7 @@ class ArtifactTab(BaseTab):
             temp_dir = None
             try:
                 # Mark as running for cancellation support
-                with self.cli_executor.process_lock:
-                    self.cli_executor.is_running = True
+                self.cli_executor.set_current_process(None, is_running=True)
 
                 self.cli_executor.output_queue.put(("clear", None))
                 self.cli_executor.output_queue.put(
@@ -966,21 +984,57 @@ class ArtifactTab(BaseTab):
                 )
 
                 # Copy compose file
-                compose_dest = app_dir / compose_path.name
-                shutil.copy2(compose_path, compose_dest)
-                self.cli_executor.output_queue.put(
-                    ("output", f"Copied compose file: {compose_path.name}\n")
-                )
+                # Check for cancellation before proceeding
+                if self.cli_executor.cancel_requested:
+                    self.cli_executor.output_queue.put(
+                        ("output", "\nOperation cancelled by user\n")
+                    )
+                    self.cli_executor.output_queue.put(("command_finished", None))
+                    return
+
+                try:
+                    compose_dest = app_dir / compose_path.name
+                    shutil.copy2(compose_path, compose_dest)
+                    self.cli_executor.output_queue.put(
+                        ("output", f"Copied compose file: {compose_path.name}\n")
+                    )
+                except (OSError, PermissionError) as e:
+                    self.cli_executor.output_queue.put(
+                        ("output", f"Error copying compose file: {e}\n")
+                    )
+                    self.cli_executor.output_queue.put(
+                        ("status", "Failed to copy compose file")
+                    )
+                    self.cli_executor.output_queue.put(("command_finished", None))
+                    return
 
                 # Handle Docker image
+                # Check for cancellation before proceeding
+                if self.cli_executor.cancel_requested:
+                    self.cli_executor.output_queue.put(
+                        ("output", "\nOperation cancelled by user\n")
+                    )
+                    self.cli_executor.output_queue.put(("command_finished", None))
+                    return
+
                 if image_source == "tarball":
                     # Copy existing tarball
-                    image_dest = app_dir / image_tarball_path.name
-                    shutil.copy2(image_tarball_path, image_dest)
-                    image_filename = image_tarball_path.name
-                    self.cli_executor.output_queue.put(
-                        ("output", f"Copied image tarball: {image_filename}\n")
-                    )
+                    try:
+                        image_dest = app_dir / image_tarball_path.name
+                        shutil.copy2(image_tarball_path, image_dest)
+                        image_filename = image_tarball_path.name
+                        self.cli_executor.output_queue.put(
+                            ("output", f"Copied image tarball: {image_filename}\n")
+                        )
+                    except (OSError, PermissionError) as e:
+                        self.cli_executor.output_queue.put(
+                            ("output", f"Error copying image tarball: {e}\n")
+                        )
+                        self.cli_executor.output_queue.put(
+                            ("status", "Failed to copy image tarball")
+                        )
+                        self.cli_executor.output_queue.put(("command_finished", None))
+                        return
                 else:
                     # Export from Docker
                     self.cli_executor.output_queue.put(
@@ -1008,6 +1062,14 @@ class ArtifactTab(BaseTab):
                     )
 
                 # Copy additional files
+                # Check for cancellation before proceeding
+                if self.cli_executor.cancel_requested:
+                    self.cli_executor.output_queue.put(
+                        ("output", "\nOperation cancelled by user\n")
+                    )
+                    self.cli_executor.output_queue.put(("command_finished", None))
+                    return
+
                 for file_path_str in additional_files:
                     src_path = resolve_path(file_path_str)
                     if not src_path or not src_path.exists():
@@ -1019,17 +1081,27 @@ class ArtifactTab(BaseTab):
                         )
                         continue
 
-                    dest_path = app_dir / src_path.name
-                    if src_path.is_dir():
-                        shutil.copytree(src_path, dest_path)
+                    try:
+                        dest_path = app_dir / src_path.name
+                        if src_path.is_dir():
+                            shutil.copytree(src_path, dest_path)
+                            self.cli_executor.output_queue.put(
+                                ("output", f"Copied directory: {src_path.name}/\n")
+                            )
+                        else:
+                            shutil.copy2(src_path, dest_path)
+                            self.cli_executor.output_queue.put(
+                                ("output", f"Copied file: {src_path.name}\n")
+                            )
+                    except (OSError, PermissionError, FileExistsError) as e:
                         self.cli_executor.output_queue.put(
-                            ("output", f"Copied directory: {src_path.name}/\n")
+                            ("output", f"Error copying {src_path.name}: {e}\n")
                         )
-                    else:
-                        shutil.copy2(src_path, dest_path)
                         self.cli_executor.output_queue.put(
-                            ("output", f"Copied file: {src_path.name}\n")
+                            ("status", f"Failed to copy {src_path.name}")
                         )
+                        self.cli_executor.output_queue.put(("command_finished", None))
+                        return
 
                 # Create inner index file (app_name/index)
                 inner_index_content = f"{compose_path.name}\n{image_filename}\n"
@@ -1054,23 +1126,49 @@ class ArtifactTab(BaseTab):
                 )
 
                 # Create tarball
+                # Check for cancellation before proceeding
+                if self.cli_executor.cancel_requested:
+                    self.cli_executor.output_queue.put(
+                        ("output", "\nOperation cancelled by user\n")
+                    )
+                    self.cli_executor.output_queue.put(("command_finished", None))
+                    return
+
                 tarball_name = f"{artifact_name}.tar.gz"
                 tarball_path = Path(temp_dir) / tarball_name
                 self.cli_executor.output_queue.put(
                     ("output", f"\nCreating tarball: {tarball_name}\n")
                 )
 
-                with tarfile.open(tarball_path, "w:gz") as tar:
-                    # Add app directory
-                    tar.add(app_dir, arcname=app_name)
-                    # Add outer index
-                    tar.add(outer_index_path, arcname="index")
+                try:
+                    with tarfile.open(tarball_path, "w:gz") as tar:
+                        # Add app directory
+                        tar.add(app_dir, arcname=app_name)
+                        # Add outer index
+                        tar.add(outer_index_path, arcname="index")
 
-                self.cli_executor.output_queue.put(
-                    ("output", "Tarball created successfully\n")
-                )
+                    self.cli_executor.output_queue.put(
+                        ("output", "Tarball created successfully\n")
+                    )
+                except (OSError, tarfile.TarError) as e:
+                    self.cli_executor.output_queue.put(
+                        ("output", f"Error creating tarball: {e}\n")
+                    )
+                    self.cli_executor.output_queue.put(
+                        ("status", "Failed to create tarball")
+                    )
+                    self.cli_executor.output_queue.put(("command_finished", None))
+                    return
 
                 # Run rdfm-artifact to create the final artifact
+                # Check for cancellation before proceeding
+                if self.cli_executor.cancel_requested:
+                    self.cli_executor.output_queue.put(
+                        ("output", "\nOperation cancelled by user\n")
+                    )
+                    self.cli_executor.output_queue.put(("command_finished", None))
+                    return
+
                 self.cli_executor.output_queue.put(
                     ("output", "\nRunning rdfm-artifact...\n")
                 )
@@ -1091,14 +1189,36 @@ class ArtifactTab(BaseTab):
                     str(output_path),
                 ]
 
-                result = subprocess.run(args, capture_output=True, text=True)
+                # Use Popen instead of run so we can cancel it
+                process = subprocess.Popen(
+                    args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+                )
 
-                if result.stdout:
-                    self.cli_executor.output_queue.put(("output", result.stdout))
-                if result.stderr:
-                    self.cli_executor.output_queue.put(("output", result.stderr))
+                # Register the process for cancellation
+                self.cli_executor.set_current_process(process, is_running=True)
 
-                if result.returncode == 0:
+                # Wait for process and capture output
+                stdout, stderr = process.communicate()
+
+                # Clear the process reference
+                self.cli_executor.set_current_process(None, is_running=True)
+
+                # Check if cancelled
+                if (
+                    process.returncode == -15 or process.returncode == -9
+                ):  # SIGTERM or SIGKILL
+                    self.cli_executor.output_queue.put(
+                        ("output", "\nOperation cancelled by user\n")
+                    )
+                    self.cli_executor.output_queue.put(("command_finished", None))
+                    return
+
+                if stdout:
+                    self.cli_executor.output_queue.put(("output", stdout))
+                if stderr:
+                    self.cli_executor.output_queue.put(("output", stderr))
+
+                if process.returncode == 0:
                     self.cli_executor.output_queue.put(
                         (
                             "output",
@@ -1110,7 +1230,7 @@ class ArtifactTab(BaseTab):
                     )
                 else:
                     self.cli_executor.output_queue.put(
-                        ("status", f"Command failed with code {result.returncode}")
+                        ("status", f"Command failed with code {process.returncode}")
                     )
 
                 self.cli_executor.output_queue.put(("command_finished", None))
@@ -1123,9 +1243,7 @@ class ArtifactTab(BaseTab):
                 self.cli_executor.output_queue.put(("command_finished", None))
             finally:
                 # Reset process tracking
-                with self.cli_executor.process_lock:
-                    self.cli_executor.is_running = False
-                    self.cli_executor.current_process = None
+                self.cli_executor.clear_current_process()
 
                 # Cleanup temp directory
                 if temp_dir and Path(temp_dir).exists():
@@ -1167,7 +1285,6 @@ class ArtifactTab(BaseTab):
             input_file,
             "--device-type",
             device_type,
-            # "--artifact-name", artifact_name,
             "--output-path",
             str(output_path),
         ]

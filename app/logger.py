@@ -8,11 +8,10 @@ import logging
 import logging.handlers
 import sys
 from pathlib import Path
-from typing import Optional
 
 
 def setup_logging(
-    log_file: Optional[str] = None,
+    log_file: str | None = None,
     console_level: int = logging.INFO,
     file_level: int = logging.DEBUG,
 ) -> logging.Logger:

@@ -5,7 +5,7 @@ CLI Executor - Handles execution of rdfm-artifact commands
 import queue
 import subprocess
 import threading
-from typing import Callable, Optional
+from typing import Callable
 
 from app.logger import get_logger
 from app.ui_constants import COMMAND_DISPLAY_MAX_LENGTH
@@ -17,22 +17,16 @@ logger = get_logger(__name__)
 class CLIExecutor:
     """Executes rdfm-artifact CLI commands in separate threads"""
 
-    def __init__(
-        self,
-        output_queue: "queue.Queue[tuple]",
-        settings_manager: Optional[object] = None,
-    ) -> None:
+    def __init__(self, output_queue: "queue.Queue[tuple]") -> None:
         """Initialize the CLI executor
 
         Args:
             output_queue: Queue for thread-safe output messages
-            settings_manager: Optional settings manager (unused for artifacts)
         """
         self.output_queue = output_queue
-        self.settings_manager = settings_manager
 
         # Track running process for cancellation
-        self.current_process: Optional[subprocess.Popen] = None
+        self.current_process: subprocess.Popen | None = None
         self.process_lock = threading.Lock()
         self.is_running = False
         self.cancel_requested = False
@@ -92,11 +86,30 @@ class CLIExecutor:
         with self.process_lock:
             return self.is_running
 
+    def set_current_process(
+        self, process: subprocess.Popen | None, is_running: bool = True
+    ) -> None:
+        """Set the current process and running state (thread-safe)
+
+        Args:
+            process: The subprocess.Popen object to track
+            is_running: Whether to mark the command as running
+        """
+        with self.process_lock:
+            self.current_process = process
+            self.is_running = is_running
+
+    def clear_current_process(self) -> None:
+        """Clear the current process and mark as not running (thread-safe)"""
+        with self.process_lock:
+            self.current_process = None
+            self.is_running = False
+
     def run_artifact_command(
         self,
         *args: str,
-        callback: Optional[Callable[[str], None]] = None,
-        success_message: Optional[str] = None,
+        callback: Callable[[str], None] | None = None,
+        success_message: str | None = None,
     ) -> None:
         """Run an rdfm-artifact command in a separate thread
 

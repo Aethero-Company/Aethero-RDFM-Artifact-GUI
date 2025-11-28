@@ -7,7 +7,6 @@ Based on Aethero brand colors from https://aethero.com
 import tkinter as tk
 from pathlib import Path
 from tkinter import ttk
-from typing import Optional
 
 from PIL import Image, ImageTk
 
@@ -59,7 +58,7 @@ class AetheroTheme:
     TAB_BORDER = "#a1a1a1"  # Tab bottom border
 
     @classmethod
-    def get_logo_path(cls) -> Optional[str]:
+    def get_logo_path(cls) -> str | None:
         """Get the path to the Aethero logo
 
         Returns:
@@ -72,7 +71,7 @@ class AetheroTheme:
         return None
 
     @classmethod
-    def get_icon_path(cls) -> Optional[str]:
+    def get_icon_path(cls) -> str | None:
         """Get the path to the application icon
 
         Returns:
@@ -85,7 +84,7 @@ class AetheroTheme:
         return None
 
     @classmethod
-    def set_app_icon(cls, root: tk.Tk) -> Optional[ImageTk.PhotoImage]:
+    def set_app_icon(cls, root: tk.Tk) -> ImageTk.PhotoImage | None:
         """Set the application icon for the taskbar
 
         Args:

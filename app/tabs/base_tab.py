@@ -3,10 +3,10 @@ Base Tab - Abstract base class for all tabs
 """
 
 import tkinter as tk
+from functools import partial
 from pathlib import Path
 from tkinter import messagebox, ttk
-from typing import Callable, List, Optional
-from functools import partial
+from typing import Callable
 
 from app.cli_executor import CLIExecutor
 from app.theme import AetheroTheme
@@ -33,7 +33,7 @@ class BaseTab:
         self,
         parent: ttk.Frame,
         cli_executor: CLIExecutor,
-        data_manager: Optional[object] = None,
+        data_manager: object | None = None,
     ) -> None:
         """Initialize the base tab
 
@@ -45,7 +45,7 @@ class BaseTab:
         self.parent = parent
         self.cli_executor = cli_executor
         self.frame = ttk.Frame(parent)
-        self.output: Optional[tk.Text] = None
+        self.output: tk.Text | None = None
         self.data_manager = data_manager or None
         self.setup_ui()
 
@@ -90,15 +90,14 @@ class BaseTab:
         output.config(yscrollcommand=scrollbar.set)
 
         # Apply theme styling to text widget
-        if AetheroTheme:
-            AetheroTheme.configure_text_widget(output)
+        AetheroTheme.configure_text_widget(output)
 
         return output
 
     def update_combobox_values(
         self,
-        combos: List[ttk.Combobox],
-        values: List[str],
+        combos: list[ttk.Combobox],
+        values: list[str],
         preserve_selection: bool = True,
     ) -> None:
         """Update multiple combobox widgets with new values.
@@ -110,7 +109,7 @@ class BaseTab:
         """
         update_combobox_values(combos, values, preserve_selection)
 
-    def get_selected_id(self, combo: ttk.Combobox) -> Optional[str]:
+    def get_selected_id(self, combo: ttk.Combobox) -> str | None:
         """Extract the ID from a combobox selection.
 
         Assumes the combobox displays items in format "(#id) name".
@@ -127,7 +126,7 @@ class BaseTab:
         self,
         var: tk.StringVar,
         title: str = "Select File",
-        filetypes: List[tuple] = None,
+        filetypes: list[tuple] | None = None,
         is_directory: bool = False,
         is_save: bool = False,
         default_extension: str = "",
@@ -200,7 +199,7 @@ class BaseTab:
         parent: ttk.Frame,
         label_text: str,
         row: int,
-        entry_var: Optional[tk.StringVar] = None,
+        entry_var: tk.StringVar | None = None,
         width: int = 30,
     ) -> tuple[tk.StringVar, ttk.Entry]:
         """Create a label and entry field pair.
@@ -231,7 +230,7 @@ class BaseTab:
         parent: ttk.Frame,
         label_text: str,
         row: int,
-        values: Optional[List[str]] = None,
+        values: list[str] | None = None,
         width: int = 27,
         readonly: bool = True,
         start_col: int = 0,
@@ -299,7 +298,7 @@ class BaseTab:
         return frame
 
     def make_refresh_callback(
-        self, refresh_types: List[str], ui_callback: Optional[Callable[[], None]] = None
+        self, refresh_types: list[str], ui_callback: Callable[[], None] | None = None
     ) -> Callable[[str], None]:
         """Create a callback that refreshes data and optionally updates UI.
 
@@ -330,10 +329,10 @@ class BaseTab:
         parent: ttk.Frame,
         label_text: str,
         row: int,
-        entry_var: Optional[tk.StringVar] = None,
+        entry_var: tk.StringVar | None = None,
         browse_title: str = "Select File",
         browse_type: str = "file",
-        filetypes: Optional[List[tuple]] = None,
+        filetypes: list[tuple] | None = None,
         start_col: int = 0,
     ) -> tuple[tk.StringVar, ttk.Entry, ttk.Button]:
         """Create a label, entry field, and browse button in one row.

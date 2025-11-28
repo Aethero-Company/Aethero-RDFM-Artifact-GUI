@@ -14,6 +14,11 @@ from app.cli_executor import CLIExecutor
 from app.logger import get_logger, setup_logging
 from app.tabs.artifact_tab import ArtifactTab
 from app.theme import AetheroTheme
+from app.ui_constants import (
+    HEADER_LOGO_SIZE,
+    MAIN_WINDOW_GEOMETRY,
+    QUEUE_POLL_INTERVAL_MS,
+)
 
 # Initialize logging
 logger = get_logger(__name__)
@@ -31,7 +36,7 @@ class ArtifactTool:
         logger.info("Initializing RDFM Artifact Tool")
         self.root = root
         self.root.title("RDFM Artifact Tool")
-        self.root.geometry("1400x900")
+        self.root.geometry(MAIN_WINDOW_GEOMETRY)
 
         # Apply Aethero theme
         logger.debug("Applying Aethero theme")
@@ -43,7 +48,7 @@ class ArtifactTool:
         # Queue for thread-safe GUI updates
         self.output_queue: "queue.Queue[tuple]" = queue.Queue()
 
-        # Initialize managers (settings manager needed for CLIExecutor but not used for artifacts)
+        # Initialize CLI executor for running rdfm-artifact commands
         self.cli_executor = CLIExecutor(self.output_queue)
 
         # Create the main interface
@@ -69,16 +74,23 @@ class ArtifactTool:
         self.logo_image = None
         logo_path = AetheroTheme.get_logo_path()
         if logo_path:
-            from PIL import Image, ImageTk
+            try:
+                from PIL import Image, ImageTk
 
-            img = Image.open(logo_path)
-            img.thumbnail((160, 40), Image.Resampling.LANCZOS)
-            self.logo_image = ImageTk.PhotoImage(img)
-            logo_label = tk.Label(
-                header_frame, image=self.logo_image, background=AetheroTheme.DARK_GRAY
-            )
-            logo_label.pack(side=tk.LEFT, padx=15, pady=5)
-        else:
+                img = Image.open(logo_path)
+                img.thumbnail(HEADER_LOGO_SIZE, Image.Resampling.LANCZOS)
+                self.logo_image = ImageTk.PhotoImage(img)
+                logo_label = tk.Label(
+                    header_frame,
+                    image=self.logo_image,
+                    background=AetheroTheme.DARK_GRAY,
+                )
+                logo_label.pack(side=tk.LEFT, padx=15, pady=5)
+            except Exception as e:
+                logger.warning(f"Failed to load logo image: {e}")
+                logo_path = None  # Fall through to text fallback
+
+        if not logo_path:
             # Text fallback
             text_logo = tk.Label(
                 header_frame,
@@ -162,7 +174,7 @@ class ArtifactTool:
             pass
 
         # Schedule next check
-        self.root.after(100, self.process_output_queue)
+        self.root.after(QUEUE_POLL_INTERVAL_MS, self.process_output_queue)
 
 
 def main() -> None:

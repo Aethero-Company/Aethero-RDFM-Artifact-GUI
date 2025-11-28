@@ -8,10 +8,9 @@ across the application.
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, ttk
-from typing import List, Optional, Tuple
 
 
-def resolve_path(path_str: str) -> Optional[Path]:
+def resolve_path(path_str: str) -> Path | None:
     """Resolve a user-provided path string to an absolute Path object.
 
     Handles:
@@ -77,7 +76,7 @@ def bind_combobox_selection_clear(combo: ttk.Combobox) -> None:
 
 
 def update_combobox_values(
-    combos: List[ttk.Combobox], values: List[str], preserve_selection: bool = True
+    combos: list[ttk.Combobox], values: list[str], preserve_selection: bool = True
 ) -> None:
     """Update multiple combobox widgets with new values.
 
@@ -125,9 +124,9 @@ def _is_duplicate_filepath(listbox: tk.Listbox, filepath: str) -> bool:
 
 def browse_file(
     title: str = "Select File",
-    filetypes: Optional[List[Tuple[str, str]]] = None,
-    var_set: Optional[tk.StringVar] = None,
-    list_insert: Optional[tk.Listbox] = None,
+    filetypes: list[tuple[str, str]] | None = None,
+    var_set: tk.StringVar | None = None,
+    list_insert: tk.Listbox | None = None,
     highlight_list_dupes: bool = True,
 ) -> str:
     """Open a file browser dialog and return the selected path.
@@ -145,17 +144,22 @@ def browse_file(
 
     filename = filedialog.askopenfilename(title=title, filetypes=filetypes)
 
-    if var_set is not None and filename:
-        var_set.set(filename)
-    if list_insert is not None and filename:
-        if highlight_list_dupes and not _is_duplicate_filepath(list_insert, filename):
-            list_insert.insert(tk.END, filename)
+    if filename:
+        if var_set is not None:
+            var_set.set(filename)
+        if list_insert is not None:
+            if highlight_list_dupes and not _is_duplicate_filepath(
+                list_insert, filename
+            ):
+                list_insert.insert(tk.END, filename)
+        return filename
+    return ""
 
 
 def browse_directory(
     title: str = "Select Directory",
-    var_set: Optional[tk.StringVar] = None,
-    list_insert: Optional[tk.Listbox] = None,
+    var_set: tk.StringVar | None = None,
+    list_insert: tk.Listbox | None = None,
     highlight_list_dupes: bool = True,
 ) -> str:
     """Open a directory browser dialog and return the selected path.
@@ -168,18 +172,23 @@ def browse_directory(
         Selected directory path as string, or empty string if cancelled
     """
     dirname = filedialog.askdirectory(title=title)
-    if var_set is not None and dirname:
-        var_set.set(dirname)
-    if list_insert is not None and dirname:
-        if highlight_list_dupes and not _is_duplicate_filepath(list_insert, dirname):
-            list_insert.insert(tk.END, dirname)
+    if dirname:
+        if var_set is not None:
+            var_set.set(dirname)
+        if list_insert is not None:
+            if highlight_list_dupes and not _is_duplicate_filepath(
+                list_insert, dirname
+            ):
+                list_insert.insert(tk.END, dirname)
+        return dirname
+    return ""
 
 
 def browse_save_file(
     title: str = "Save File",
-    filetypes: Optional[List[Tuple[str, str]]] = None,
+    filetypes: list[tuple[str, str]] | None = None,
     default_extension: str = "",
-    var_set: Optional[tk.StringVar] = None,
+    var_set: tk.StringVar | None = None,
 ) -> str:
     """Open a save file dialog and return the selected path.
 
@@ -199,11 +208,14 @@ def browse_save_file(
         title=title, filetypes=filetypes, defaultextension=default_extension
     )
 
-    if var_set is not None and filename:
-        var_set.set(filename)
+    if filename:
+        if var_set is not None:
+            var_set.set(filename)
+        return filename
+    return ""
 
 
-def extract_id_from_display(display_text: str) -> Optional[str]:
+def extract_id_from_display(display_text: str) -> str | None:
     """Extract the ID from a display string formatted as "(#id) name".
 
     Args:
@@ -238,8 +250,8 @@ def format_display_name(item_id: str, name: str) -> str:
 
 def center_window(
     window: tk.Tk | tk.Toplevel,
-    width: Optional[int] = None,
-    height: Optional[int] = None,
+    width: int | None = None,
+    height: int | None = None,
 ) -> None:
     """Center a window on the screen.
 
@@ -283,12 +295,12 @@ def truncate_text(text: str, max_length: int, suffix: str = "...") -> str:
 
 
 # Common file type filters for dialogs
-FILETYPES_ALL: List[Tuple[str, str]] = [("All files", "*.*")]
-FILETYPES_RDFM: List[Tuple[str, str]] = [("RDFM artifacts", "*.rdfm")]
-FILETYPES_TAR: List[Tuple[str, str]] = [("Gzip archives", "*.tar.gz *.tgz")]
-FILETYPES_COMPOSE: List[Tuple[str, str]] = [("YAML Files", "*.yml *.yaml")]
-FILETYPES_ZEPHYR: List[Tuple[str, str]] = [("Zephyr Binaries", "*.bin")]
-FILETYPES_ROOTFS: List[Tuple[str, str]] = [
+FILETYPES_ALL: list[tuple[str, str]] = [("All files", "*.*")]
+FILETYPES_RDFM: list[tuple[str, str]] = [("RDFM artifacts", "*.rdfm")]
+FILETYPES_TAR: list[tuple[str, str]] = [("Gzip archives", "*.tar.gz *.tgz")]
+FILETYPES_COMPOSE: list[tuple[str, str]] = [("YAML Files", "*.yml *.yaml")]
+FILETYPES_ZEPHYR: list[tuple[str, str]] = [("Zephyr Binaries", "*.bin")]
+FILETYPES_ROOTFS: list[tuple[str, str]] = [
     ("Rootfs files", "*.ext4 *.squashfs *.tar *.tar.gz *.tgz"),
     ("EXT4 images", "*.ext4"),
     ("SquashFS images", "*.squashfs"),

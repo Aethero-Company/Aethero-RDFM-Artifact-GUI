@@ -5,8 +5,6 @@ This module provides a single source of truth for all UI-related constants
 to improve maintainability and consistency across the application.
 """
 
-from typing import List, Tuple
-
 # =============================================================================
 # GRID & SPACING
 # =============================================================================
@@ -43,8 +41,8 @@ HEADER_HEIGHT: int = 50
 # =============================================================================
 
 # Logo thumbnail sizes (width, height)
-SPLASH_LOGO_SIZE: Tuple[int, int] = (200, 60)
-HEADER_LOGO_SIZE: Tuple[int, int] = (160, 40)
+SPLASH_LOGO_SIZE: tuple[int, int] = (200, 60)
+HEADER_LOGO_SIZE: tuple[int, int] = (160, 40)
 
 # =============================================================================
 # OUTPUT AREA DIMENSIONS
@@ -85,7 +83,7 @@ COMMAND_TRUNCATE_LENGTH: int = 97  # Length before adding "..."
 # =============================================================================
 
 # Supported device types for artifact creation
-SUPPORTED_DEVICE_TYPES: List[str] = ["p3509-a02-p3767-0000"]
+SUPPORTED_DEVICE_TYPES: list[str] = ["p3509-a02-p3767-0000"]
 
 # =============================================================================
 # DOCKER ARTIFACT SETTINGS
