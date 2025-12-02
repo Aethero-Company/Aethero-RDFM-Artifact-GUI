@@ -46,7 +46,7 @@ Issues = "https://github.com/Aethero-Company/Aethero-RDFM-Artifact-GUI/issues"
 rdfm-artifact-gui = "app.artifact_tool:main"
 
 [tool.setuptools]
-packages = ["app", "app.tabs"]
+packages = ["app", "app.tabs", "app.tabs.artifact_tabs"]
 package-dir = {"" = "."}
 
 [tool.setuptools.package-data]

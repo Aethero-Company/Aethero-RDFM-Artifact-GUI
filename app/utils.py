@@ -5,8 +5,12 @@ This module provides shared utility functions to reduce code duplication
 across the application.
 """
 
+import re
 import shutil
+import tarfile
+import tempfile
 import tkinter as tk
+from collections import defaultdict
 from pathlib import Path
 from tkinter import filedialog, ttk
 from typing import TYPE_CHECKING
@@ -238,10 +242,10 @@ def extract_id_from_display(display_text: str) -> str | None:
     if not display_text:
         return None
 
-    # Format is "(#id) name"
-    if display_text.startswith("(#") and ")" in display_text:
-        end = display_text.index(")")
-        return display_text[2:end]
+    id_rgx = r"\(\ *#(\d+)\ *\)"
+    id = re.match(id_rgx, display_text)
+    if id:
+        return id.groups()[0]
 
     return None
 
@@ -321,6 +325,74 @@ def try_copy_file(src: Path, dest: Path, cli_executor: "CLIExecutor") -> bool:
         cli_executor.output_queue.put(("status", "Failed to copy file"))
         cli_executor.output_queue.put(("command_finished", None))
         return False
+
+
+def make_nested_dict() -> defaultdict:
+    return defaultdict(make_nested_dict, __files__=[])
+
+
+def pprint_rdfm_contents(artifact_path: str) -> str | None:
+    if not artifact_path:
+        return None
+    if not artifact_path.endswith(".rdfm"):
+        return None
+    with tempfile.TemporaryDirectory() as staging_dir:
+        staging_path = Path(staging_dir)
+        with tarfile.open(artifact_path, "r") as artifact:
+            artifact.extract(artifact.getmember("data/0000.tar"), str(staging_path))
+        data_tar_path = staging_path / "data" / "0000.tar"
+        with tarfile.open(data_tar_path, "r") as data_tar:
+            fn_ptr = data_tar.extractfile("filename")
+            update_file = fn_ptr.read().decode("utf-8").strip()
+            dest_ptr = data_tar.extractfile("dest_dir")
+            update_dest = dest_ptr.read().decode("utf-8")
+            tgz_rgx = r"(.*\.tar\.gz)|(.*\.tgz)"
+            if re.search(tgz_rgx, update_file):
+                data_member = data_tar.getmember(update_file)
+                data_tar.extract(data_member, str(staging_path))
+                return update_dest + pprint_tar_contents(
+                    str(staging_path / update_file)
+                )
+            return update_dest + "└── " + update_file
+    return None
+
+
+def pprint_tar_contents(tar_path: str) -> str:
+    struct = make_nested_dict()
+
+    with tarfile.open(tar_path, "r") as tar:
+        for member in tar:
+            parts = member.name.strip("/").split("/")
+
+            current = struct
+            for part in parts[:-1]:
+                current = current[part]
+
+            if member.isdir():
+                current[parts[-1]]
+            elif member.isfile():
+                current["__files__"].append(parts[-1])
+
+    return _pprint_struct(struct)
+
+
+def _pprint_struct(struct: dict, out_str: str = "", depth: int = 0) -> str:
+    prefix = "│  " * depth
+
+    files = sorted(struct.get("__files__", []))
+    subdirs = sorted(k for k in struct if k != "__files__")
+
+    items = [(f, False) for f in files] + [(d, True) for d in subdirs]
+
+    for i, (name, is_dir) in enumerate(items):
+        connector = "└── " if i == len(items) - 1 else "├── "
+        suffix = "/" if is_dir else ""
+        out_str += f"{prefix}{connector}{name}{suffix}\n"
+
+        if is_dir:
+            out_str = _pprint_struct(struct[name], out_str, depth + 1)
+
+    return out_str
 
 
 # Common file type filters for dialogs

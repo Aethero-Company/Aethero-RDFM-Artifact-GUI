@@ -18,6 +18,7 @@ from app.ui_constants import (
 )
 from app.utils import (
     FILETYPES_RDFM,
+    pprint_rdfm_contents,
     resolve_path_str,
 )
 
@@ -46,6 +47,11 @@ class ArtifactTab(BaseTab):
         ttk.Button(read_frame, text="Read", command=self.read_artifact).grid(
             row=0, column=3, padx=STANDARD_PAD, pady=STANDARD_PAD
         )
+        ttk.Button(
+            read_frame,
+            text="Check Contents",
+            command=self.check_rdfm_contents,
+        ).grid(row=0, column=4, padx=STANDARD_PAD, pady=STANDARD_PAD)
 
         # Make the entry field expand
         read_frame.columnconfigure(1, weight=1)
@@ -128,6 +134,12 @@ class ArtifactTab(BaseTab):
             )
             return
 
+        if not artifact_path_str.endswith(".rdfm"):
+            messagebox.showwarning(
+                "Input Error", "Please select an RDFM artifact file (*.rdfm)"
+            )
+            return
+
         # Handle path - convert to absolute path
         artifact_path = resolve_path_str(artifact_path_str)
         if not artifact_path:
@@ -135,3 +147,34 @@ class ArtifactTab(BaseTab):
             return
 
         self.cli_executor.run_artifact_command("read", artifact_path)
+
+    def check_rdfm_contents(self) -> None:
+        """Display the contents (files) of an RDFM artifact"""
+        self.cli_executor.output_queue.put(("clear", None))
+
+        artifact_path_str = self.read_path_var.get().strip()
+
+        if not artifact_path_str:
+            messagebox.showwarning(
+                "Input Error", "Please select an artifact file to read"
+            )
+            return
+
+        if not artifact_path_str.endswith(".rdfm"):
+            messagebox.showwarning(
+                "Input Error", "Please select an RDFM artifact file (*.rdfm)"
+            )
+            return
+
+        # Handle path - convert to absolute path
+        artifact_path = resolve_path_str(artifact_path_str)
+        if not artifact_path:
+            messagebox.showerror("Error", "Invalid path provided")
+            return
+        self.cli_executor.output_queue.put(
+            ("status", f"Checking contents of {artifact_path}")
+        )
+        contents = pprint_rdfm_contents(artifact_path)
+        self.cli_executor.output_queue.put(("output", contents))
+        self.cli_executor.output_queue.put(("status", "Done"))
+        self.cli_executor.output_queue.put(("command_finished", None))
