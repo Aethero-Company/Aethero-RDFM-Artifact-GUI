@@ -5,12 +5,12 @@ Zephyr Artifact Tab - Creation of Zephyr RDFM artifacts
 import tkinter as tk
 from tkinter import ttk
 
-from app.tabs.base_tab import BaseTab
-from app.ui_constants import (
+from artifact_gui.tabs.base_tab import BaseTab
+from artifact_gui.ui_constants import (
     STANDARD_PAD,
     SUPPORTED_DEVICE_TYPES,
 )
-from app.utils import (
+from artifact_gui.utils import (
     FILETYPES_RDFM,
     FILETYPES_ZEPHYR,
 )

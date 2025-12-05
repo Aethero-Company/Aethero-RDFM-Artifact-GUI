@@ -5,18 +5,18 @@ Artifact Tab - RDFM artifact creation and inspection interface
 import tkinter as tk
 from tkinter import messagebox, ttk
 
-from app.tabs.artifact_tabs import (
+from artifact_gui.tabs.artifact_tabs import (
     DeltaRootfsCreator,
     DockerCreator,
     SingleFileCreator,
     ZephyrCreator,
 )
-from app.tabs.base_tab import BaseTab
-from app.theme import AetheroTheme
-from app.ui_constants import (
+from artifact_gui.tabs.base_tab import BaseTab
+from artifact_gui.theme import AetheroTheme
+from artifact_gui.ui_constants import (
     STANDARD_PAD,
 )
-from app.utils import (
+from artifact_gui.utils import (
     FILETYPES_RDFM,
     pprint_rdfm_contents,
     resolve_path_str,

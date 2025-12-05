@@ -8,9 +8,9 @@ import threading
 from collections.abc import Callable
 from functools import partial
 
-from app.logger import get_logger
-from app.ui_constants import COMMAND_DISPLAY_MAX_LENGTH
-from app.utils import truncate_text
+from artifact_gui.logger import get_logger
+from artifact_gui.ui_constants import COMMAND_DISPLAY_MAX_LENGTH
+from artifact_gui.utils import truncate_text
 
 logger = get_logger(__name__)
 

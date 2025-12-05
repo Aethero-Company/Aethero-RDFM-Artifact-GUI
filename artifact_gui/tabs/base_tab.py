@@ -7,10 +7,14 @@ from functools import partial
 from pathlib import Path
 from tkinter import messagebox, ttk
 
-from app.cli_executor import CLIExecutor
-from app.theme import AetheroTheme
-from app.ui_constants import OUTPUT_AREA_HEIGHT, OUTPUT_AREA_WIDTH, STANDARD_PAD
-from app.utils import (
+from artifact_gui.cli_executor import CLIExecutor
+from artifact_gui.theme import AetheroTheme
+from artifact_gui.ui_constants import (
+    OUTPUT_AREA_HEIGHT,
+    OUTPUT_AREA_WIDTH,
+    STANDARD_PAD,
+)
+from artifact_gui.utils import (
     FILETYPES_ALL,
     bind_combobox_selection_clear,
     browse_directory,

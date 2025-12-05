@@ -104,7 +104,7 @@ RUN if getent passwd $UID > /dev/null 2>&1; then userdel -f $(getent passwd $UID
 RUN chown -R $UID:$GID /home/$UNAME
 
 # Copy application files
-COPY --chown=$UID:$GID ./app /app/app/
+COPY --chown=$UID:$GID ./artifact_gui /app/artifact_gui/
 COPY ./pyproject.toml /app/pyproject.toml
 
 RUN pipx install /app

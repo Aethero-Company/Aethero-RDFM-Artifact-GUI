@@ -54,4 +54,4 @@ docker run --rm -it \
     -w "$CONTAINER_WORKDIR" \
     --network host \
     aethero/rdfm-artifact-gui \
-    bash -c "PYTHONPATH=/app python3 -m app.artifact_tool"
+    bash -c "PYTHONPATH=/app python3 -m artifact_gui.artifact_tool"

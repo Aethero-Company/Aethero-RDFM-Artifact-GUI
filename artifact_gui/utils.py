@@ -15,10 +15,10 @@ from pathlib import Path
 from tkinter import filedialog, ttk
 from typing import TYPE_CHECKING
 
-from app.logger import get_logger
+from artifact_gui.logger import get_logger
 
 if TYPE_CHECKING:
-    from app.cli_executor import CLIExecutor
+    from artifact_gui.cli_executor import CLIExecutor
 
 logger = get_logger(__name__)
 
