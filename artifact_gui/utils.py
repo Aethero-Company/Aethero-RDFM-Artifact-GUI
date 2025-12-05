@@ -350,7 +350,8 @@ def pprint_rdfm_contents(artifact_path: str) -> str | None:
             if re.search(tgz_rgx, update_file):
                 data_member = data_tar.getmember(update_file)
                 data_tar.extract(data_member, str(staging_path))
-                return update_dest + pprint_tar_contents(
+                top_level = update_dest.strip() + "/" + update_file + "\n"
+                return top_level + pprint_tar_contents(
                     str(staging_path / update_file)
                 )
             return update_dest + "└── " + update_file

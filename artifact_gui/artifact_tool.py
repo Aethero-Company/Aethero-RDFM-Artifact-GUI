@@ -12,6 +12,7 @@ from tkinter import ttk
 
 from PIL import Image, ImageTk
 
+from artifact_gui import __version__
 from artifact_gui.cli_executor import CLIExecutor
 from artifact_gui.logger import get_logger, setup_logging
 from artifact_gui.tabs.artifact_tab import ArtifactTab
@@ -113,7 +114,7 @@ class ArtifactTool:
 
         info_label = tk.Label(
             header_frame,
-            text="Version 0.1",
+            text=f"Version {__version__}",
             font=("TkDefaultFont", 9),
             background=AetheroTheme.DARK_GRAY,
             foreground=AetheroTheme.CYAN_ACCENT,
