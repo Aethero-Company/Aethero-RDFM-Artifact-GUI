@@ -12,11 +12,11 @@ from tkinter import ttk
 
 from PIL import Image, ImageTk
 
-from app.cli_executor import CLIExecutor
-from app.logger import get_logger, setup_logging
-from app.tabs.artifact_tab import ArtifactTab
-from app.theme import AetheroTheme
-from app.ui_constants import (
+from artifact_gui.cli_executor import CLIExecutor
+from artifact_gui.logger import get_logger, setup_logging
+from artifact_gui.tabs.artifact_tab import ArtifactTab
+from artifact_gui.theme import AetheroTheme
+from artifact_gui.ui_constants import (
     HEADER_LOGO_SIZE,
     MAIN_WINDOW_GEOMETRY,
     QUEUE_POLL_INTERVAL_MS,

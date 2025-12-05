@@ -13,15 +13,15 @@ from pathlib import Path
 from tkinter import messagebox, ttk
 from typing import TypedDict, Unpack
 
-from app.tabs.base_tab import BaseTab
-from app.theme import AetheroTheme
-from app.ui_constants import (
+from artifact_gui.tabs.base_tab import BaseTab
+from artifact_gui.theme import AetheroTheme
+from artifact_gui.ui_constants import (
     DEFAULT_DOCKER_APP_NAME,
     DOCKER_CONTAINER_DEST_DIR,
     STANDARD_PAD,
     SUPPORTED_DEVICE_TYPES,
 )
-from app.utils import (
+from artifact_gui.utils import (
     FILETYPES_ALL,
     FILETYPES_COMPOSE,
     FILETYPES_RDFM,

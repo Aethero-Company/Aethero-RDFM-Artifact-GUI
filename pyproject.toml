@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "rdfm-artifact-gui"
+name = "artifact_gui"
 version = "0.1.0"
 description = "A graphical interface for creating and inspecting RDFM artifacts"
 readme = "README.md"
@@ -43,14 +43,14 @@ Repository = "https://github.com/Aethero-Company/Aethero-RDFM-Artifact-GUI/"
 Issues = "https://github.com/Aethero-Company/Aethero-RDFM-Artifact-GUI/issues"
 
 [project.scripts]
-rdfm-artifact-gui = "app.artifact_tool:main"
+rdfm-artifact-gui = "artifact_gui.artifact_tool:main"
 
 [tool.setuptools]
-packages = ["app", "app.tabs", "app.tabs.artifact_tabs"]
+packages = ["artifact_gui", "artifact_gui.tabs", "artifact_gui.tabs.artifact_tabs"]
 package-dir = {"" = "."}
 
 [tool.setuptools.package-data]
-app = ["*.json", "assets/*.png", "assets/*.jpg", "assets/*.ico"]
+artifact_gui = ["*.json", "assets/*.png", "assets/*.jpg", "assets/*.ico"]
 
 [tool.ruff]
 target-version = "py311"
