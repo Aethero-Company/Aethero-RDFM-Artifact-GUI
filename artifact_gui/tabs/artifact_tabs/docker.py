@@ -708,7 +708,7 @@ class DockerCreator(BaseTab):
         self.cli_executor.output_queue.put(
             ("output", f"Exporting Docker image: {docker_image_name}\n")
         )
-        image_filename = "_".join(docker_image_name.split(":")) + ".tar.gz"
+        image_filename = docker_image_name.replace("/", "_").replace(":", "_") + ".tar.gz"  # noqa: E501
         image_dest = app_dir / image_filename
 
         success, message = self._export_docker_image(docker_image_name, image_dest)
