@@ -2,6 +2,7 @@
 Artifact Tab - RDFM artifact creation and inspection interface
 """
 
+import threading
 import tkinter as tk
 from tkinter import messagebox, ttk
 
@@ -150,8 +151,6 @@ class ArtifactTab(BaseTab):
 
     def check_rdfm_contents(self) -> None:
         """Display the contents (files) of an RDFM artifact"""
-        self.cli_executor.output_queue.put(("clear", None))
-
         artifact_path_str = self.read_path_var.get().strip()
 
         if not artifact_path_str:
@@ -171,10 +170,37 @@ class ArtifactTab(BaseTab):
         if not artifact_path:
             messagebox.showerror("Error", "Invalid path provided")
             return
-        self.cli_executor.output_queue.put(
-            ("status", f"Checking contents of {artifact_path}")
-        )
-        contents = pprint_rdfm_contents(artifact_path)
-        self.cli_executor.output_queue.put(("output", contents))
-        self.cli_executor.output_queue.put(("status", "Done"))
-        self.cli_executor.output_queue.put(("command_finished", None))
+
+        # Run in background thread to keep UI responsive
+        def check_contents_thread() -> None:
+            try:
+                self.cli_executor.output_queue.put(("clear", None))
+                self.cli_executor.output_queue.put(("command_started", None))
+                self.cli_executor.output_queue.put(
+                    ("status", f"Reading artifact: {artifact_path}")
+                )
+
+                # Get contents
+                contents = pprint_rdfm_contents(artifact_path)
+
+                if contents:
+                    self.cli_executor.output_queue.put(("output", contents))
+                    self.cli_executor.output_queue.put(("status", "Done"))
+                else:
+                    self.cli_executor.output_queue.put(
+                        ("output", "Error: Could not read artifact contents\n")
+                    )
+                    self.cli_executor.output_queue.put(
+                        ("status", "Failed to read artifact")
+                    )
+            except Exception as e:
+                self.cli_executor.output_queue.put(
+                    ("output", f"Error reading artifact: {e}\n")
+                )
+                self.cli_executor.output_queue.put(("status", f"Error: {e}"))
+            finally:
+                self.cli_executor.output_queue.put(("command_finished", None))
+
+        # Start thread
+        thread = threading.Thread(target=check_contents_thread, daemon=True)
+        thread.start()
