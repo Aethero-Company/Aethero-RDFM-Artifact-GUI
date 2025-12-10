@@ -405,3 +405,36 @@ class AetheroTheme:
             highlightbackground=cls.LIGHT_GRAY,
             highlightcolor=cls.CYAN_ACCENT,
         )
+
+    @classmethod
+    def configure_treeview(cls, widget: ttk.Treeview, style: ttk.Style) -> None:
+        """Configure a Treeview widget with dark theme colors
+
+        Args:
+            widget: Treeview widget to configure
+            style: ttk.Style object for configuring the treeview
+        """
+        # Configure treeview style
+        style.configure(
+            "Dark.Treeview",
+            background=cls.MID_GRAY,
+            foreground=cls.PRIMARY_TEXT,
+            fieldbackground=cls.MID_GRAY,
+            borderwidth=1,
+            relief="flat",
+        )
+        style.configure(
+            "Dark.Treeview.Heading",
+            background=cls.DARK_GRAY,
+            foreground=cls.PRIMARY_TEXT,
+            borderwidth=1,
+            relief="flat",
+        )
+        style.map(
+            "Dark.Treeview",
+            background=[("selected", cls.PRIMARY_BLUE)],
+            foreground=[("selected", cls.PRIMARY_TEXT)],
+        )
+
+        # Apply the style to the widget
+        widget.configure(style="Dark.Treeview")

@@ -2,16 +2,22 @@
 Docker Artifact Tab - Creation of Docker RDFM artifacts
 """
 
+import io
+import re
 import shutil
 import subprocess
 import tarfile
 import tempfile
 import threading
+import time
 import tkinter as tk
+from collections.abc import Callable
 from functools import partial
 from pathlib import Path
 from tkinter import messagebox, ttk
 from typing import TypedDict, Unpack
+
+import yaml
 
 from artifact_gui.tabs.base_tab import BaseTab
 from artifact_gui.theme import AetheroTheme
@@ -29,8 +35,271 @@ from artifact_gui.utils import (
     browse_directory,
     browse_file,
     resolve_path,
-    try_copy_file,
 )
+
+# Cache timeout for Docker images (2 minutes)
+DOCKER_IMAGE_CACHE_TIMEOUT = 120
+
+# Docker image format expected column count
+DOCKER_IMAGE_COLUMN_COUNT = 3
+
+
+class DockerImageSelectionDialog:
+    """Dialog for selecting multiple Docker images."""
+
+    def __init__(self, parent: tk.Widget) -> None:
+        """Initialize the Docker image selection dialog.
+
+        Args:
+            parent: Parent widget
+        """
+        self.parent = parent
+        self.result: list[str] = []  # List of selected image names
+        self.dialog: tk.Toplevel | None = None
+        self.treeview: ttk.Treeview | None = None
+
+    def show(self) -> list[str]:
+        """Show the dialog and return selected images.
+
+        Returns:
+            List of selected Docker image names (e.g., ["nginx:latest", "redis:alpine"])
+        """
+        # Create dialog window
+        self.dialog = tk.Toplevel(self.parent)
+        self.dialog.title("Select Docker Images")
+        self.dialog.geometry("700x400")
+        self.dialog.transient(self.parent)
+        self.dialog.grab_set()
+
+        # Apply theme
+        style = AetheroTheme.apply_theme(self.dialog)
+
+        # Create main frame
+        main_frame = ttk.Frame(self.dialog, padding=STANDARD_PAD)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Title label
+        ttk.Label(
+            main_frame,
+            text="Select Docker images to add:",
+            font=("TkDefaultFont", 10, "bold"),
+        ).pack(pady=(0, STANDARD_PAD))
+
+        # Create treeview with columns
+        tree_frame = ttk.Frame(main_frame)
+        tree_frame.pack(fill=tk.BOTH, expand=True, pady=(0, STANDARD_PAD))
+
+        self.treeview = ttk.Treeview(
+            tree_frame,
+            columns=("image", "created", "size"),
+            show="headings",
+            selectmode="extended",
+            height=12,
+        )
+
+        # Define column headings
+        self.treeview.heading("image", text="Image Name:Tag")
+        self.treeview.heading("created", text="Created")
+        self.treeview.heading("size", text="Size")
+
+        # Define column widths
+        self.treeview.column("image", width=300)
+        self.treeview.column("created", width=200)
+        self.treeview.column("size", width=100)
+
+        # Apply dark theme to treeview
+        AetheroTheme.configure_treeview(self.treeview, style)
+
+        # Add scrollbars
+        y_scrollbar = ttk.Scrollbar(
+            tree_frame, orient=tk.VERTICAL, command=self.treeview.yview
+        )
+        y_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.treeview.config(yscrollcommand=y_scrollbar.set)
+
+        self.treeview.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        # Status label
+        self.status_label = ttk.Label(main_frame, text="Loading Docker images...")
+        self.status_label.pack(pady=(0, STANDARD_PAD))
+
+        # Buttons frame
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(side=tk.BOTTOM, pady=(STANDARD_PAD, 0))
+
+        ttk.Button(
+            button_frame,
+            text="OK",
+            command=self._on_ok,
+            style="Add.TButton",
+            width=10,
+        ).pack(side=tk.LEFT, padx=(0, STANDARD_PAD))
+        ttk.Button(button_frame, text="Cancel", command=self._on_cancel, width=10).pack(
+            side=tk.LEFT
+        )
+
+        # Start loading images
+        self._load_images()
+
+        # Center dialog on parent
+        self.dialog.update_idletasks()
+        x = (
+            self.parent.winfo_rootx()
+            + (self.parent.winfo_width() - self.dialog.winfo_width()) // 2
+        )
+        y = (
+            self.parent.winfo_rooty()
+            + (self.parent.winfo_height() - self.dialog.winfo_height()) // 2
+        )
+        self.dialog.geometry(f"+{x}+{y}")
+
+        # Wait for dialog to close
+        self.dialog.wait_window()
+
+        return self.result
+
+    def _load_images(self) -> None:
+        """Load Docker images in background thread."""
+
+        def fetch_images() -> None:
+            error_message = None
+            images: list[dict[str, str]] = []
+
+            try:
+                # Run docker images command with detailed format
+                result = subprocess.run(
+                    [
+                        "docker",
+                        "images",
+                        "--format",
+                        "{{.Repository}}:{{.Tag}}\t{{.CreatedAt}}\t{{.Size}}",
+                    ],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+
+                # Parse output if successful
+                if result.returncode == 0:
+                    images = self._parse_docker_images(result.stdout)
+                    if not images:
+                        error_message = "Failed to list Docker images"
+
+            except FileNotFoundError:
+                error_message = "Docker command not found"
+            except subprocess.TimeoutExpired:
+                error_message = "Docker command timed out"
+            except Exception:
+                error_message = "Error loading Docker images"
+
+            # Update UI on main thread
+            self._update_dialog_ui(images, error_message)
+
+        # Run in background thread
+        thread = threading.Thread(target=fetch_images, daemon=True)
+        thread.start()
+
+    def _parse_docker_images(self, stdout: str) -> list[dict[str, str]]:
+        """Parse docker images command output.
+
+        Args:
+            stdout: Output from docker images command
+
+        Returns:
+            List of image dictionaries with name, created, and size fields
+        """
+        images = []
+        for line in stdout.strip().split("\n"):
+            if line and "<none>" not in line:
+                parts = line.split("\t")
+                if len(parts) >= DOCKER_IMAGE_COLUMN_COUNT:
+                    # Remove timezone suffix from timestamp (e.g., "+0000 UTC")
+                    created = parts[1]
+                    if " +" in created:
+                        created = created.split(" +")[0]
+                    images.append(
+                        {"name": parts[0], "created": created, "size": parts[2]}
+                    )
+        return images
+
+    def _update_dialog_ui(
+        self, images: list[dict[str, str]], error_message: str | None
+    ) -> None:
+        """Update dialog UI with images or error message.
+
+        Args:
+            images: List of Docker images
+            error_message: Error message to display, or None if successful
+        """
+        if not self.dialog:
+            return
+
+        if error_message:
+            self.dialog.after(0, lambda: self._show_error(error_message))
+        elif images:
+            self.dialog.after(0, lambda: self._populate_treeview(images))
+        else:
+            self.dialog.after(0, lambda: self._show_error("No Docker images found"))
+
+    def _populate_treeview(self, images: list[dict[str, str]]) -> None:
+        """Populate treeview with images (called from main thread).
+
+        Args:
+            images: List of image dictionaries with name, created, size
+        """
+        if not self.treeview:
+            return
+
+        # Clear existing items
+        for item in self.treeview.get_children():
+            self.treeview.delete(item)
+
+        # Add images
+        for img in images:
+            self.treeview.insert(
+                "",
+                tk.END,
+                values=(img["name"], img["created"], img["size"]),
+            )
+
+        # Update status
+        count = len(images)
+        if count == 0:
+            self.status_label.config(
+                text="No Docker images found", foreground=AetheroTheme.CYAN_ACCENT
+            )
+        else:
+            plural = "s" if count != 1 else ""
+            status_text = f"Found {count} Docker image{plural}. Select and click OK."
+            self.status_label.config(text=status_text, foreground="")
+
+    def _show_error(self, message: str) -> None:
+        """Show error message in status label.
+
+        Args:
+            message: Error message to display
+        """
+        if self.status_label:
+            self.status_label.config(text=message, foreground=AetheroTheme.CYAN_ACCENT)
+
+    def _on_ok(self) -> None:
+        """Handle OK button click."""
+        if self.treeview:
+            # Get selected items
+            selected_items = self.treeview.selection()
+            self.result = [
+                self.treeview.item(item)["values"][0] for item in selected_items
+            ]
+
+        if self.dialog:
+            self.dialog.destroy()
+
+    def _on_cancel(self) -> None:
+        """Handle Cancel button click."""
+        self.result = []
+        if self.dialog:
+            self.dialog.destroy()
 
 
 class ArtifactParams(TypedDict):
@@ -38,13 +307,24 @@ class ArtifactParams(TypedDict):
 
     app_name: str
     compose_file: Path
-    image_source: str
-    image_tarball: Path | None
-    docker_image_name: str
+    docker_images: list[tuple[str, str]]  # List of (type, source) tuples
     artifact_name: str
     device_type: str
     output_path: Path
     additional_files: list[str]
+
+
+class TarballParams(TypedDict):
+    """Parameters for tarball creation"""
+
+    artifact_name: str
+    temp_dir: str
+    compose_file: Path
+    docker_images: list[tuple[str, str, Path]]  # List of (type, source, path) tuples
+    additional_files: list[str]
+    inner_index_content: str
+    outer_index_content: str
+    app_name: str
 
 
 class DockerCreator(BaseTab):
@@ -52,16 +332,15 @@ class DockerCreator(BaseTab):
         pass
 
     def setup_ui(self) -> None:
+        # Initialize instance variables for multi-container support
+        self.docker_images: list[tuple[str, str]] = []  # List of (type, source) tuples
+        self.compose_service_count: int = 0  # Number of services in compose file
+
         self.docker_frame = ttk.Frame(self.frame)
         self.docker_frame.pack(
             fill=tk.BOTH, expand=True, padx=STANDARD_PAD, pady=STANDARD_PAD
         )
         self.setup_docker_frame()
-
-        # Bind selection clear to all readonly comboboxes
-        self.bind_selection_clear(
-            self.docker_device_type_combo, self.docker_image_combo
-        )
 
     def setup_docker_frame(self) -> None:
         """Setup UI components for Docker container artifact creation"""
@@ -69,7 +348,18 @@ class DockerCreator(BaseTab):
         self.docker_frame.columnconfigure(1, weight=2)  # Left column entry fields
         self.docker_frame.columnconfigure(4, weight=2)  # Right column listbox
 
-        # LEFT COLUMN
+        # Setup UI sections
+        self._setup_app_name_and_compose()
+        self._setup_docker_images_section()
+        self._setup_additional_files_section()
+        self._setup_bottom_fields()
+        self._setup_create_button()
+
+        # Bind selection clear to all readonly comboboxes
+        self.bind_selection_clear(self.docker_device_type_combo)
+
+    def _setup_app_name_and_compose(self) -> None:
+        """Setup app name and compose file fields."""
         # App name
         ttk.Label(self.docker_frame, text="App Name:").grid(
             row=0, column=0, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky="w"
@@ -92,72 +382,93 @@ class DockerCreator(BaseTab):
             browse_title="Select Compose File",
             filetypes=FILETYPES_COMPOSE,
         )
+        # Add trace to parse compose file when it changes
+        self.docker_compose_path_var.trace_add("write", self._on_compose_file_changed)
 
-        # Docker image source selection
-        ttk.Label(self.docker_frame, text="Image Source:").grid(
-            row=2, column=0, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky="w"
+    def _setup_docker_images_section(self) -> None:
+        """Setup Docker images listbox and buttons."""
+        # Docker Images section (rows 2-5, LEFT COLUMN)
+        ttk.Label(self.docker_frame, text="Docker Images:").grid(
+            row=2, column=0, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky="nw"
         )
-        self.docker_image_source_var = tk.StringVar(value="tarball")
-        image_source_frame = ttk.Frame(self.docker_frame)
-        image_source_frame.grid(
+
+        # Listbox with scrollbars for Docker images
+        images_listbox_frame = ttk.Frame(self.docker_frame)
+        images_listbox_frame.grid(
             row=2,
             column=1,
-            columnspan=2,
+            rowspan=4,
             padx=STANDARD_PAD,
             pady=STANDARD_PAD,
-            sticky="w",
+            sticky="nsew",
         )
-        ttk.Radiobutton(
-            image_source_frame,
-            text="Existing Tarball",
-            variable=self.docker_image_source_var,
-            value="tarball",
-            command=self.toggle_image_source,
-        ).pack(side=tk.LEFT)
-        ttk.Radiobutton(
-            image_source_frame,
-            text="Export from Docker",
-            variable=self.docker_image_source_var,
-            value="export",
-            command=self.toggle_image_source,
-        ).pack(side=tk.LEFT, padx=10)
+        images_listbox_frame.columnconfigure(0, weight=1)
+        images_listbox_frame.rowconfigure(0, weight=1)
 
-        # Image tarball path (for existing tarball)
-        (
-            self.docker_image_tarball_var,
-            self.docker_tarball_entry,
-            self.docker_tarball_browse,
-        ) = self.create_labeled_entry_with_browse(
-            self.docker_frame,
-            "Image Tarball:",
-            row=3,
-            browse_title="Select Docker Image Tarball",
-            filetypes=FILETYPES_TAR,
+        self.docker_images_listbox = tk.Listbox(
+            images_listbox_frame, height=8, exportselection=False, selectmode=tk.SINGLE
+        )
+        self.docker_images_listbox.grid(row=0, column=0, sticky="nsew")
+
+        images_y_scrollbar = ttk.Scrollbar(
+            images_listbox_frame,
+            orient=tk.VERTICAL,
+            command=self.docker_images_listbox.yview,
+        )
+        images_y_scrollbar.grid(row=0, column=1, sticky="ns")
+
+        images_x_scrollbar = ttk.Scrollbar(
+            images_listbox_frame,
+            orient=tk.HORIZONTAL,
+            command=self.docker_images_listbox.xview,
+        )
+        images_x_scrollbar.grid(row=1, column=0, sticky="ew")
+
+        self.docker_images_listbox.config(
+            yscrollcommand=images_y_scrollbar.set, xscrollcommand=images_x_scrollbar.set
         )
 
-        # Docker image name (for export from Docker)
-        ttk.Label(self.docker_frame, text="Docker Image:").grid(
-            row=4, column=0, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky="w"
-        )
-        self.docker_image_name_var = tk.StringVar()
-        self.docker_image_combo = ttk.Combobox(
-            self.docker_frame, textvariable=self.docker_image_name_var, state="disabled"
-        )
-        self.docker_image_combo.grid(
-            row=4, column=1, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky="ew"
-        )
-        self.docker_refresh_images_btn = ttk.Button(
-            self.docker_frame,
-            text="Refresh",
-            command=self.refresh_docker_images,
-            state="disabled",
-        )
-        self.docker_refresh_images_btn.grid(
-            row=4, column=2, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky="w"
+        # Apply theme styling to listbox
+        AetheroTheme.configure_listbox(self.docker_images_listbox)
+
+        # Buttons for adding/removing Docker images
+        images_buttons = ttk.Frame(self.docker_frame)
+        images_buttons.grid(
+            row=2,
+            column=2,
+            rowspan=4,
+            padx=STANDARD_PAD,
+            pady=STANDARD_PAD,
+            sticky="nw",
         )
 
-        # RIGHT COLUMN
-        # Additional files section
+        ttk.Button(
+            images_buttons,
+            text="Add from Docker",
+            command=self.add_docker_image_from_docker,
+        ).pack(fill=tk.X, pady=2)
+        ttk.Button(
+            images_buttons,
+            text="Add from File",
+            command=self.add_docker_image_from_file,
+        ).pack(fill=tk.X, pady=2)
+        ttk.Button(
+            images_buttons, text="Remove", command=self.remove_docker_image
+        ).pack(fill=tk.X, pady=2)
+
+        # Warning label for service count mismatch (initially hidden)
+        self.docker_images_warning_label = ttk.Label(
+            images_buttons,
+            text="",
+            foreground=AetheroTheme.CYAN_ACCENT,
+            wraplength=120,
+            justify=tk.LEFT,
+        )
+        self.docker_images_warning_label.pack(fill=tk.X, pady=(10, 2))
+
+    def _setup_additional_files_section(self) -> None:
+        """Setup additional files listbox and buttons."""
+        # Additional files section (rows 0-3, RIGHT COLUMN)
         ttk.Label(self.docker_frame, text="Additional Files:").grid(
             row=0, column=3, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky="nw"
         )
@@ -228,43 +539,47 @@ class DockerCreator(BaseTab):
             fill=tk.X, pady=2
         )
 
-        # BOTTOM ROW (spans both columns)
-        # Artifact name for docker
+    def _setup_bottom_fields(self) -> None:
+        """Setup artifact name, output path, and device type fields."""
+        # Artifact name for docker (row 4, RIGHT)
         ttk.Label(self.docker_frame, text="Artifact Name:").grid(
-            row=5, column=0, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky="w"
+            row=4, column=3, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky="w"
         )
         self.docker_artifact_name_var = tk.StringVar()
         ttk.Entry(self.docker_frame, textvariable=self.docker_artifact_name_var).grid(
-            row=5,
-            column=1,
+            row=4,
+            column=4,
             columnspan=2,
             padx=STANDARD_PAD,
             pady=STANDARD_PAD,
             sticky="ew",
         )
 
-        # Device type for docker
-        self.docker_device_type_var, self.docker_device_type_combo = (
-            self.create_labeled_combo(
-                self.docker_frame,
-                "Device Type:",
-                row=5,
-                values=SUPPORTED_DEVICE_TYPES,
-                start_col=3,
-            )
-        )
-
-        # Output path for docker
+        # Output path for docker (row 5, RIGHT)
         self.docker_output_path_var, _, _ = self.create_labeled_entry_with_browse(
             self.docker_frame,
             "Output Path:",
-            row=6,
+            row=5,
             entry_var=tk.StringVar(value="docker-artifact.rdfm"),
             browse_title="Save Docker Artifact As",
             browse_type="save",
             filetypes=FILETYPES_RDFM,
+            start_col=3,
         )
 
+        # Device type for docker (row 6, LEFT)
+        self.docker_device_type_var, self.docker_device_type_combo = (
+            self.create_labeled_combo(
+                self.docker_frame,
+                "Device Type:",
+                row=6,
+                values=SUPPORTED_DEVICE_TYPES,
+                start_col=0,
+            )
+        )
+
+    def _setup_create_button(self) -> None:
+        """Setup create docker artifact button."""
         # Create docker artifact button (centered at bottom)
         ttk.Button(
             self.docker_frame,
@@ -374,36 +689,17 @@ class DockerCreator(BaseTab):
             # Clear the process reference
             self.cli_executor.set_current_process(None, is_running=True)
 
-    def toggle_image_source(self) -> None:
-        """Toggle between tarball and Docker export modes.
-
-        Enables/disables the appropriate UI elements based on whether the user
-        wants to use an existing tarball or export from Docker.
-        """
-        source = self.docker_image_source_var.get()
-        if source == "tarball":
-            self.docker_tarball_entry.config(state="normal")
-            self.docker_tarball_browse.config(state="normal")
-            self.docker_image_combo.config(state="disabled")
-            self.docker_refresh_images_btn.config(state="disabled")
-        else:
-            self.docker_tarball_entry.config(state="disabled")
-            self.docker_tarball_browse.config(state="disabled")
-            self.docker_image_combo.config(state="readonly")
-            self.docker_refresh_images_btn.config(state="normal")
-            # Auto-refresh images when switching to export mode
-            self.refresh_docker_images()
-
-    def refresh_docker_images(self) -> None:
+    def refresh_docker_images(
+        self, callback: Callable[[list[str]], None] | None = None
+    ) -> None:
         """Refresh the list of available Docker images from the local Docker daemon.
 
         Runs 'docker images' command in a background thread to get the list of
-        available images and updates the Docker image combobox with the results.
-        """
+        available images and updates the cache.
 
-        # Show loading state immediately
-        self.docker_refresh_images_btn.config(state="disabled", text="Loading...")
-        self.cli_executor.output_queue.put(("status", "Loading Docker images..."))
+        Args:
+            callback: Optional callback function to call after images are refreshed
+        """
 
         def fetch_images() -> None:
             try:
@@ -423,66 +719,136 @@ class DockerCreator(BaseTab):
                         if line and "<none>" not in line:
                             images.append(line)
 
-                    # Schedule UI update on main thread
-                    self.docker_image_combo.after(
-                        0, lambda: self._update_docker_images(sorted(images))
+                    # Update cache on main thread
+                    self.docker_images_listbox.after(
+                        0,
+                        lambda: self._update_docker_images_cache(
+                            sorted(images), callback
+                        ),
                     )
                 else:
-                    error_msg = result.stderr or "Unknown error"
-                    self.cli_executor.output_queue.put(
-                        ("status", f"Failed to list Docker images: {error_msg[:50]}")
-                    )
-                    self.docker_image_combo.after(
-                        0, lambda: self._update_docker_images([])
+                    self.docker_images_listbox.after(
+                        0, lambda: self._update_docker_images_cache([], callback)
                     )
 
-            except FileNotFoundError:
-                self.cli_executor.output_queue.put(
-                    ("status", "Docker command not found")
+            except (FileNotFoundError, subprocess.TimeoutExpired, Exception):
+                self.docker_images_listbox.after(
+                    0, lambda: self._update_docker_images_cache([], callback)
                 )
-                self.docker_image_combo.after(0, lambda: self._update_docker_images([]))
-            except subprocess.TimeoutExpired:
-                self.cli_executor.output_queue.put(
-                    ("status", "Docker command timed out")
-                )
-                self.docker_image_combo.after(0, lambda: self._update_docker_images([]))
-            except Exception as e:
-                self.cli_executor.output_queue.put(
-                    ("status", f"Error listing images: {str(e)[:50]}")
-                )
-                self.docker_image_combo.after(0, lambda: self._update_docker_images([]))
 
         # Run in background thread
         thread = threading.Thread(target=fetch_images, daemon=True)
         thread.start()
 
-    def _update_docker_images(self, images: list[str]) -> None:
-        """Update the Docker images combobox (called from main thread).
+    def _update_docker_images_cache(
+        self, images: list[str], callback: Callable[[list[str]], None] | None = None
+    ) -> None:
+        """Update the Docker images cache (called from main thread).
 
         This method must be called from the main thread to safely update
-        the UI with the fetched Docker images.
+        the cache with the fetched Docker images.
 
         Args:
             images: List of Docker image names in "repository:tag" format
+            callback: Optional callback function to call after cache is updated
         """
-        # Update the combobox values
-        self.docker_image_combo["values"] = images
+        # Update cache
+        self.docker_images_cache = images
+        self.docker_images_cache_time = time.time()
 
-        # Set first image as default if available and no current selection
-        if images and not self.docker_image_name_var.get():
-            self.docker_image_name_var.set(images[0])
+        # Call callback if provided
+        if callback:
+            callback(images)
 
-        # Clear selection highlight on combobox after event processing
-        self.docker_image_combo.after_idle(self.docker_image_combo.selection_clear)
+    def _on_compose_file_changed(self, *args: object) -> None:  # noqa: ARG002
+        """Called when compose file path changes.
 
-        # Show count in status
-        if images:
-            self.cli_executor.output_queue.put(
-                ("status", f"Found {len(images)} Docker images")
+        Parses the file and updates warning.
+        """
+        compose_path_str = self.docker_compose_path_var.get().strip()
+        if not compose_path_str:
+            self.compose_service_count = 0
+            self._update_images_warning()
+            return
+
+        compose_path = resolve_path(compose_path_str)
+        if not compose_path or not compose_path.exists():
+            self.compose_service_count = 0
+            self._update_images_warning()
+            return
+
+        try:
+            with Path.open(compose_path) as f:
+                compose_data = yaml.safe_load(f)
+
+            # Count services in compose file
+            if compose_data and "services" in compose_data:
+                self.compose_service_count = len(compose_data["services"])
+            else:
+                self.compose_service_count = 0
+
+            self._update_images_warning()
+
+        except (yaml.YAMLError, OSError, KeyError):
+            # If parsing fails, just set count to 0
+            self.compose_service_count = 0
+            self._update_images_warning()
+
+    def _update_images_warning(self) -> None:
+        """Update the warning label based on image count vs service count."""
+        image_count = len(self.docker_images)
+
+        if self.compose_service_count > 0 and image_count != self.compose_service_count:
+            warning_text = (
+                f"⚠ Compose has {self.compose_service_count} "
+                f"service{'s' if self.compose_service_count != 1 else ''} "
+                f"but {image_count} image{'s' if image_count != 1 else ''} provided"
             )
+            self.docker_images_warning_label.config(text=warning_text)
+        else:
+            self.docker_images_warning_label.config(text="")
 
-        # Re-enable refresh button
-        self.docker_refresh_images_btn.config(state="normal", text="Refresh")
+    def add_docker_image_from_file(self) -> None:
+        """Add a Docker image from a tarball file."""
+        file_path = browse_file(
+            title="Select Docker Image Tarball", filetypes=FILETYPES_TAR
+        )
+        if file_path:
+            # Add to internal list
+            self.docker_images.append(("file", file_path))
+            # Add to listbox (display only)
+            self.docker_images_listbox.insert(tk.END, file_path)
+            # Update warning
+            self._update_images_warning()
+
+    def remove_docker_image(self) -> None:
+        """Remove the currently selected image from the Docker images list."""
+        selection = self.docker_images_listbox.curselection()
+        if selection:
+            index = selection[0]
+            # Remove from listbox
+            self.docker_images_listbox.delete(index)
+            # Remove from internal list
+            del self.docker_images[index]
+            # Update warning
+            self._update_images_warning()
+
+    def add_docker_image_from_docker(self) -> None:
+        """Add Docker images from the Docker daemon via selection dialog."""
+        # Show selection dialog
+        dialog = DockerImageSelectionDialog(self.docker_frame)
+        selected_images = dialog.show()
+
+        # Add selected images to the list
+        for image_name in selected_images:
+            # Add to internal list
+            self.docker_images.append(("docker", image_name))
+            # Add to listbox (display only)
+            self.docker_images_listbox.insert(tk.END, image_name)
+
+        # Update warning if any images were added
+        if selected_images:
+            self._update_images_warning()
 
     def remove_docker_file(self) -> None:
         """Remove the currently selected file from the additional files list.
@@ -494,8 +860,8 @@ class DockerCreator(BaseTab):
         if selection:
             self.docker_files_listbox.delete(selection[0])
 
-    def _validate_docker_fields(self, image_src: str) -> bool:
-        # Validate required fields based on image source
+    def _validate_docker_fields(self) -> bool:
+        # Validate required fields
         required_fields = {
             "App Name": self.docker_app_name_var.get().strip(),
             "Compose File": self.docker_compose_path_var.get().strip(),
@@ -503,41 +869,39 @@ class DockerCreator(BaseTab):
             "Device Type": self.docker_device_type_var.get().strip(),
         }
 
-        # Add conditional validation based on image source
-        if image_src == "tarball":
-            required_fields["Image Tarball"] = (
-                self.docker_image_tarball_var.get().strip()
-            )
-        else:  # export
-            required_fields["Docker Image Name"] = (
-                self.docker_image_name_var.get().strip()
-            )
+        if not self.validate_required_fields(required_fields):
+            return False
 
-        return self.validate_required_fields(required_fields)
+        forbidden_pattern = r'[^a-zA-Z0-9\._]'
+        if re.search(forbidden_pattern, required_fields["Artifact Name"]):
+            self.show_warning(
+                "Validation Error",
+                "Artifact name can only contain characters (a-z A-Z 0-9 . _)",
+            )
+            return False
+
+        # Validate that at least one Docker image is provided
+        if len(self.docker_images) == 0:
+            self.show_warning(
+                "Validation Error", "Please add at least one Docker image"
+            )
+            return False
+
+        return True
 
     def _resolve_paths(
-        self, compose_file: str, image_src: str, image_tarball: str, output_path: str
-    ) -> tuple[bool, Path | None, Path | None, Path]:
+        self, compose_file: str, output_path: str
+    ) -> tuple[bool, Path | None, Path]:
         # Validate compose file exists
         compose_path = resolve_path(compose_file)
         if not compose_path or not compose_path.exists():
             messagebox.showerror("Error", f"Compose file not found: {compose_file}")
-            return False, None, None, None
-
-        # Validate image tarball if using existing
-        image_tarball_path: Path | None = None
-        if image_src == "tarball":
-            image_tarball_path = resolve_path(image_tarball)
-            if not image_tarball_path or not image_tarball_path.exists():
-                messagebox.showerror(
-                    "Error", f"Image tarball not found: {image_tarball}"
-                )
-                return False, None, None, None
+            return False, None, None
 
         # Resolve output path
         output_path = self.resolve_output_path(output_path, "docker-artifact.rdfm")
 
-        return True, compose_path, image_tarball_path, output_path
+        return True, compose_path, output_path
 
     def _try_copy_additional_files(
         self, additional_files: list[str], app_dir: Path
@@ -576,46 +940,64 @@ class DockerCreator(BaseTab):
                 return False
         return True
 
-    def _generate_index_files(
+    def _generate_index_contents(
         self,
         compose_file: Path,
-        image_filename: str,
-        app_dir: Path,
+        image_paths: list[tuple[str, str, Path]],
         app_name: str,
-        temp_dir: str,
-    ) -> Path:
-        # Create inner index file (app_name/index)
-        inner_index_content = f"{compose_file.name}\n{image_filename}\n"
-        inner_index_path = app_dir / "index"
-        inner_index_path.write_text(inner_index_content)
-        self.cli_executor.output_queue.put(
-            ("output", f"Created inner index: {app_name}/index\n")
-        )
-        self.cli_executor.output_queue.put(
-            (
-                "output",
-                (f"  Contents: {compose_file.name} {image_filename}\n"),
-            )
-        )
+    ) -> tuple[str, str]:
+        """Generate index file contents without writing to disk.
 
-        # Create outer index file
+        Args:
+            compose_file: Path to compose file
+            image_paths: List of (type, source, path) tuples for images
+            app_name: App directory name
+
+        Returns:
+            Tuple of (inner_index_content, outer_index_content)
+        """
+        # Create inner index content (app_name/index)
+        # Format: compose_file.name followed by all image filenames (one per line)
+        image_filenames = [path.name for _, _, path in image_paths]
+        inner_index_lines = [compose_file.name, *image_filenames]
+        inner_index_content = "\n".join(inner_index_lines) + "\n"
+
+        # Create outer index content
         outer_index_content = f"{app_name}/index\n"
-        outer_index_path = Path(temp_dir) / "index"
-        outer_index_path.write_text(outer_index_content)
-        self.cli_executor.output_queue.put(("output", "Created outer index: index\n"))
-        self.cli_executor.output_queue.put(
-            ("output", f"  Contents: {app_name}/index\n")
-        )
-        return outer_index_path
 
-    def _try_create_tarball(
-        self,
-        artifact_name: str,
-        temp_dir: str,
-        app_dir: Path,
-        app_name: str,
-        index_path: Path,
-    ) -> Path | None:
+        # Log what we're adding
+        self.cli_executor.output_queue.put(
+            ("output", f"Generating index: {app_name}/index\n")
+        )
+        self.cli_executor.output_queue.put(
+            ("output", f"  Contents: {compose_file.name}")
+        )
+        for filename in image_filenames:
+            self.cli_executor.output_queue.put(("output", f", {filename}"))
+        self.cli_executor.output_queue.put(("output", "\n"))
+
+        return inner_index_content, outer_index_content
+
+    def _try_create_tarball(self, **kwargs: Unpack[TarballParams]) -> Path | None:
+        """Create tarball directly from source files without staging copies.
+
+        Args:
+            **kwargs: Tarball creation parameters (see TarballParams TypedDict)
+
+        Returns:
+            Path to created tarball, or None if failed
+        """
+        params: TarballParams = kwargs  # type: ignore[assignment]
+
+        artifact_name = params["artifact_name"]
+        temp_dir = params["temp_dir"]
+        compose_file = params["compose_file"]
+        docker_images = params["docker_images"]
+        additional_files = params["additional_files"]
+        inner_index_content = params["inner_index_content"]
+        outer_index_content = params["outer_index_content"]
+        app_name = params["app_name"]
+
         tarball_name = f"{artifact_name}.tar.gz"
         tarball_path = Path(temp_dir) / tarball_name
         self.cli_executor.output_queue.put(
@@ -624,10 +1006,30 @@ class DockerCreator(BaseTab):
 
         try:
             with tarfile.open(tarball_path, "w:gz") as tar:
-                # Add app directory
-                tar.add(app_dir, arcname=app_name)
-                # Add outer index
-                tar.add(index_path, arcname="index")
+                # Add compose file directly
+                tar.add(compose_file, arcname=f"{app_name}/{compose_file.name}")
+
+                # Add Docker images directly from source
+                for _, _, image_path in docker_images:
+                    self.cli_executor.output_queue.put(
+                        ("output", f"Adding image: {image_path.name}\n")
+                    )
+                    tar.add(image_path, arcname=f"{app_name}/{image_path.name}")
+
+                # Add additional files directly
+                for file_path_str in additional_files:
+                    file_path = resolve_path(file_path_str)
+                    if file_path and file_path.exists():
+                        self.cli_executor.output_queue.put(
+                            ("output", f"Adding file/directory: {file_path.name}\n")
+                        )
+                        tar.add(file_path, arcname=f"{app_name}/{file_path.name}")
+
+                # Add inner index from memory
+                self._add_index_to_tar(tar, f"{app_name}/index", inner_index_content)
+
+                # Add outer index from memory
+                self._add_index_to_tar(tar, "index", outer_index_content)
 
             self.cli_executor.output_queue.put(
                 ("output", "Tarball created successfully\n")
@@ -640,6 +1042,21 @@ class DockerCreator(BaseTab):
             self.cli_executor.output_queue.put(("status", "Failed to create tarball"))
             self.cli_executor.output_queue.put(("command_finished", None))
             return None
+
+    def _add_index_to_tar(
+        self, tar: tarfile.TarFile, arcname: str, content: str
+    ) -> None:
+        """Add an index file to tar from memory.
+
+        Args:
+            tar: Open tarfile to add to
+            arcname: Archive name for the file
+            content: String content of the file
+        """
+        content_bytes = content.encode("utf-8")
+        tarinfo = tarfile.TarInfo(name=arcname)
+        tarinfo.size = len(content_bytes)
+        tar.addfile(tarinfo, io.BytesIO(content_bytes))
 
     def _check_cancellation(self) -> bool:
         """Check if operation was cancelled.
@@ -677,51 +1094,80 @@ class DockerCreator(BaseTab):
 
         return temp_dir, app_dir
 
-    def _handle_docker_image(
-        self,
-        image_source: str,
-        image_tarball: Path | None,
-        docker_image_name: str,
-        app_dir: Path,
-    ) -> str | None:
-        """Handle Docker image (tarball or export).
+    def _format_file_size(self, size_bytes: int) -> str:
+        """Format file size in human-readable format.
 
         Args:
-            image_source: Either "tarball" or "export"
-            image_tarball: Path to tarball if using existing
-            docker_image_name: Docker image name if exporting
-            app_dir: App directory to save image to
+            size_bytes: File size in bytes
 
         Returns:
-            Image filename if successful, None if failed
+            Formatted string like "123.4 MB" or "1.2 GB"
         """
-        if image_source == "tarball":
-            if not try_copy_file(
-                image_tarball,
-                app_dir / image_tarball.name,
-                self.cli_executor,
-            ):
-                return None
-            return image_tarball.name
+        gb = size_bytes / (1024**3)
+        if gb >= 1.0:
+            return f"{gb:.1f} GB"
+        mb = size_bytes / (1024**2)
+        return f"{mb:.1f} MB"
 
-        # Export from Docker
-        self.cli_executor.output_queue.put(
-            ("output", f"Exporting Docker image: {docker_image_name}\n")
-        )
-        image_filename = docker_image_name.replace("/", "_").replace(":", "_") + ".tar.gz"  # noqa: E501
-        image_dest = app_dir / image_filename
+    def _handle_docker_images(
+        self,
+        docker_images: list[tuple[str, str]],
+        temp_dir: str,
+    ) -> list[tuple[str, str, Path]] | None:
+        """Handle multiple Docker images (validate tarballs or export from Docker).
 
-        success, message = self._export_docker_image(docker_image_name, image_dest)
-        if not success:
-            self.cli_executor.output_queue.put(("output", message + "\n"))
-            self.cli_executor.output_queue.put(("status", "Docker export failed"))
-            self.cli_executor.output_queue.put(("command_finished", None))
-            return None
+        Args:
+            docker_images: List of (type, source) tuples
+            temp_dir: Temporary directory for Docker exports
 
-        self.cli_executor.output_queue.put(
-            ("output", f"Exported Docker image to: {image_filename} - {message}\n")
-        )
-        return image_filename
+        Returns:
+            List of (type, source, path) tuples if successful, None if any failed
+        """
+        image_paths = []
+
+        for image_type, image_source in docker_images:
+            if image_type == "file":
+                # Validate tarball file exists
+                source_path = resolve_path(image_source)
+                if not source_path or not source_path.exists():
+                    self.cli_executor.output_queue.put(
+                        ("output", f"Error: Image file not found: {image_source}\n")
+                    )
+                    return None
+
+                # Get file size and report it
+                file_size = source_path.stat().st_size
+                size_str = self._format_file_size(file_size)
+                msg = f"Using image tarball {source_path.name} ({size_str})\n"
+                self.cli_executor.output_queue.put(("output", msg))
+
+                image_paths.append((image_type, image_source, source_path))
+
+            elif image_type == "docker":
+                # Export from Docker to temp directory
+                self.cli_executor.output_queue.put(
+                    ("output", f"Exporting Docker image: {image_source}\n")
+                )
+                image_filename = (
+                    image_source.replace("/", "_").replace(":", "_") + ".tar.gz"
+                )
+                image_dest = Path(temp_dir) / image_filename
+
+                success, message = self._export_docker_image(image_source, image_dest)
+                if not success:
+                    self.cli_executor.output_queue.put(("output", message + "\n"))
+                    self.cli_executor.output_queue.put(
+                        ("status", "Docker export failed")
+                    )
+                    self.cli_executor.output_queue.put(("command_finished", None))
+                    return None
+
+                self.cli_executor.output_queue.put(
+                    ("output", f"Exported Docker image: {image_filename} - {message}\n")
+                )
+                image_paths.append((image_type, image_source, image_dest))
+
+        return image_paths
 
     def _run_rdfm_artifact(
         self,
@@ -799,7 +1245,7 @@ class DockerCreator(BaseTab):
 
         This method creates a Docker container artifact by:
         1. Creating a temporary directory structure
-        2. Copying the compose file and image (either from tarball or Docker export)
+        2. Copying the compose file and images (either from tarballs or Docker export)
         3. Copying additional files
         4. Generating index files for RDFM
         5. Creating a tarball
@@ -809,9 +1255,6 @@ class DockerCreator(BaseTab):
         # Get values from UI
         app_name = self.docker_app_name_var.get().strip()
         compose_file = self.docker_compose_path_var.get().strip()
-        image_source = self.docker_image_source_var.get()
-        image_tarball = self.docker_image_tarball_var.get().strip()
-        docker_image_name = self.docker_image_name_var.get().strip()
         artifact_name = self.docker_artifact_name_var.get().strip()
         device_type = self.docker_device_type_var.get().strip()
         output_path = self.docker_output_path_var.get().strip()
@@ -819,24 +1262,22 @@ class DockerCreator(BaseTab):
         # Get additional files from listbox
         additional_files = list(self.docker_files_listbox.get(0, tk.END))
 
-        if not self._validate_docker_fields(image_source):
+        if not self._validate_docker_fields():
             return
 
-        success, compose_file, image_tarball, output_path = self._resolve_paths(
-            compose_file, image_source, image_tarball, output_path
+        success, compose_path, resolved_output_path = self._resolve_paths(
+            compose_file, output_path
         )
         if not success:
             return
 
         params: ArtifactParams = {
             "app_name": app_name,
-            "compose_file": compose_file,
-            "image_source": image_source,
-            "image_tarball": image_tarball,
-            "docker_image_name": docker_image_name,
+            "compose_file": compose_path,
+            "docker_images": self.docker_images.copy(),  # Copy the list
             "artifact_name": artifact_name,
             "device_type": device_type,
-            "output_path": output_path,
+            "output_path": resolved_output_path,
             "additional_files": additional_files,
         }
 
@@ -846,75 +1287,71 @@ class DockerCreator(BaseTab):
         thread = threading.Thread(target=artifact_creator, daemon=True)
         thread.start()
 
-    def _execute_artifact_steps(
-        self, params: ArtifactParams, app_dir: Path, temp_dir: str
-    ) -> bool:
-        """Execute the main artifact creation steps.
+    def _execute_artifact_steps(self, params: ArtifactParams, temp_dir: str) -> bool:
+        """Execute artifact creation steps without staging directory copies.
 
         Args:
             params: Artifact creation parameters
-            app_dir: App directory path
             temp_dir: Temporary directory path
 
         Returns:
             True if all steps succeeded, False otherwise
         """
-        # Copy compose file
-        if not try_copy_file(
+        # Step 1: Validate compose file exists
+        if not params["compose_file"].exists() or self._check_cancellation():
+            self.cli_executor.output_queue.put(
+                ("output", f"Error: Compose file not found: {params['compose_file']}\n")
+            )
+            return False
+
+        # Step 2: Handle Docker images (validate or export)
+        image_paths = self._handle_docker_images(params["docker_images"], temp_dir)
+        if not image_paths or self._check_cancellation():
+            return False
+
+        # Step 3: Validate additional files exist
+        for file_path_str in params["additional_files"]:
+            file_path = resolve_path(file_path_str)
+            if not file_path or not file_path.exists():
+                self.cli_executor.output_queue.put(
+                    ("output", f"Warning: File not found, skipping: {file_path_str}\n")
+                )
+
+        if self._check_cancellation():
+            return False
+
+        # Step 4: Generate index contents
+        inner_index, outer_index = self._generate_index_contents(
             params["compose_file"],
-            app_dir / params["compose_file"].name,
-            self.cli_executor,
-        ):
+            image_paths,
+            params["app_name"],
+        )
+
+        if self._check_cancellation():
             return False
 
-        # Handle Docker image
-        if not self._check_cancellation():
-            image_filename = self._handle_docker_image(
-                params["image_source"],
-                params["image_tarball"],
-                params["docker_image_name"],
-                app_dir,
-            )
-        if not image_filename:
+        # Step 5: Create tarball directly from source files
+        tarball_params: TarballParams = {
+            "artifact_name": params["artifact_name"],
+            "temp_dir": temp_dir,
+            "compose_file": params["compose_file"],
+            "docker_images": image_paths,
+            "additional_files": params["additional_files"],
+            "inner_index_content": inner_index,
+            "outer_index_content": outer_index,
+            "app_name": params["app_name"],
+        }
+        tarball_path = self._try_create_tarball(**tarball_params)
+        if not tarball_path or self._check_cancellation():
             return False
 
-        # Copy additional files
-        if not self._check_cancellation or not self._try_copy_additional_files(
-            params["additional_files"], app_dir
-        ):
-            return False
-
-        # Generate index files
-        if not self._check_cancellation():
-            outer_index_path = self._generate_index_files(
-                params["compose_file"],
-                image_filename,
-                app_dir,
-                params["app_name"],
-                temp_dir,
-            )
-
-        # Create tarball
-        if not self._check_cancellation():
-            tarball_path = self._try_create_tarball(
-                params["artifact_name"],
-                temp_dir,
-                app_dir,
-                params["app_name"],
-                outer_index_path,
-            )
-        if not tarball_path:
-            return False
-
-        # Run rdfm-artifact
-        if not self._check_cancellation():
-            return self._run_rdfm_artifact(
-                params["artifact_name"],
-                params["device_type"],
-                tarball_path,
-                params["output_path"],
-            )
-        return False
+        # Step 6: Run rdfm-artifact to create final artifact
+        return self._run_rdfm_artifact(
+            params["artifact_name"],
+            params["device_type"],
+            tarball_path,
+            params["output_path"],
+        )
 
     # Run the creation in a separate thread
     def create_artifact(self, **kwargs: Unpack[ArtifactParams]) -> None:
@@ -934,12 +1371,15 @@ class DockerCreator(BaseTab):
             )
             self.cli_executor.output_queue.put(("command_started", None))
 
-            # Setup directories
-            temp_dir, app_dir = self._setup_directories(params["app_name"])
+            # Create temporary directory (only for Docker exports and final tarball)
+            temp_dir = tempfile.mkdtemp(prefix="rdfm_docker_")
+            self.cli_executor.output_queue.put(
+                ("output", f"Created temporary directory: {temp_dir}\n")
+            )
 
-            # Execute steps with cancellation checks
+            # Execute steps (no staging copies needed)
             if not self._check_cancellation():
-                self._execute_artifact_steps(params, app_dir, temp_dir)
+                self._execute_artifact_steps(params, temp_dir)
 
             self.cli_executor.output_queue.put(("command_finished", None))
 
