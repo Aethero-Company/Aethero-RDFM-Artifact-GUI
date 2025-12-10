@@ -56,7 +56,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-pil.imagetk \
     python3-pip \
     python3-venv \
-    pipx \
     # Runtime libraries for rdfm-artifact
     liblzma5 \
     libglib2.0-0 \
@@ -83,10 +82,6 @@ COPY --from=builder /build/rdfm/tools/rdfm-artifact/rdfm-artifact /usr/local/bin
 COPY --from=builder /usr/local/lib/libxdelta3* /usr/local/lib/
 RUN ldconfig
 
-# Set up pipx to install to system-wide location
-ENV PIPX_HOME=/opt/pipx
-ENV PIPX_BIN_DIR=/usr/local/bin
-
 # Create user with matching host UID/GID
 ARG UNAME=rdfm-user
 ARG UID=1000
@@ -107,12 +102,14 @@ RUN chown -R $UID:$GID /home/$UNAME
 COPY --chown=$UID:$GID ./artifact_gui /app/artifact_gui/
 COPY ./pyproject.toml /app/pyproject.toml
 
-RUN pipx install /app
+RUN python3 -m venv /opt/venv && \
+    /opt/venv/bin/pip install /app && \
+    chown -R $UID:$GID /opt/venv
 
 # Set up environment for the user
 USER $UNAME
 ENV HOME=/home/$UNAME
-ENV PATH="/usr/local/bin:$PATH"
+ENV PATH="/opt/venv/bin:$PATH"
 
 # Default command - can be overridden
 CMD ["rdfm-artifact-gui"]

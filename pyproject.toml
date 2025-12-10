@@ -29,6 +29,7 @@ keywords = ["rdfm", "device-management", "gui", "fleet-management"]
 # Pillow required for logo and icon display
 dependencies = [
     "Pillow>=9.0",
+    "PyYAML>=6.0"
 ]
 
 [project.optional-dependencies]
