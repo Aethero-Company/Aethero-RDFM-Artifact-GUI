@@ -8,12 +8,11 @@ across the application.
 import re
 import shutil
 import tarfile
-import tempfile
 import tkinter as tk
 from collections import defaultdict
 from pathlib import Path
 from tkinter import filedialog, ttk
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, BinaryIO
 
 from artifact_gui.logger import get_logger
 
@@ -332,36 +331,95 @@ def make_nested_dict() -> defaultdict:
 
 
 def pprint_rdfm_contents(artifact_path: str) -> str | None:
-    if not artifact_path:
+    """Extract and display artifact contents without extracting to disk.
+
+    Args:
+        artifact_path: Path to the RDFM artifact file
+
+    Returns:
+        Formatted string showing artifact contents, or None if error
+    """
+    # Validate inputs
+    if not artifact_path or not artifact_path.endswith(".rdfm"):
         return None
-    if not artifact_path.endswith(".rdfm"):
-        return None
-    with tempfile.TemporaryDirectory() as staging_dir:
-        staging_path = Path(staging_dir)
+
+    try:
+        # Read artifact without extracting to disk (faster)
         with tarfile.open(artifact_path, "r") as artifact:
-            artifact.extract(artifact.getmember("data/0000.tar"), str(staging_path))
-        data_tar_path = staging_path / "data" / "0000.tar"
-        with tarfile.open(data_tar_path, "r") as data_tar:
-            fn_ptr = data_tar.extractfile("filename")
-            update_file = fn_ptr.read().decode("utf-8").strip()
-            dest_ptr = data_tar.extractfile("dest_dir")
-            update_dest = dest_ptr.read().decode("utf-8")
-            tgz_rgx = r"(.*\.tar\.gz)|(.*\.tgz)"
-            if re.search(tgz_rgx, update_file):
-                data_member = data_tar.getmember(update_file)
-                data_tar.extract(data_member, str(staging_path))
-                top_level = update_dest.strip() + "/" + update_file + "\n"
-                return top_level + pprint_tar_contents(
-                    str(staging_path / update_file)
-                )
-            return update_dest + "└── " + update_file
+            # Read the data tar from memory
+            data_tar_member = artifact.getmember("data/0000.tar")
+            data_tar_file = artifact.extractfile(data_tar_member)
+            if not data_tar_file:
+                return None
+
+            # Read the inner tar from memory and extract metadata
+            with tarfile.open(fileobj=data_tar_file, mode="r") as data_tar:
+                # Get filename and dest_dir from tar
+                fn_ptr = data_tar.extractfile("filename")
+                dest_ptr = data_tar.extractfile("dest_dir")
+
+                if not fn_ptr or not dest_ptr:
+                    return None
+
+                update_file = fn_ptr.read().decode("utf-8").strip()
+                update_dest = dest_ptr.read().decode("utf-8")
+
+                # Check if it's a tarball and process accordingly
+                tgz_rgx = r"(.*\.tar\.gz)|(.*\.tgz)"
+                if not re.search(tgz_rgx, update_file):
+                    return update_dest + "└── " + update_file
+
+                # Handle tarball case
+                tarball_file = data_tar.extractfile(update_file)
+                if tarball_file:
+                    top_level = update_dest.strip() + "/" + update_file + "\n"
+                    return top_level + pprint_tar_contents_from_fileobj(tarball_file)
+
+    except Exception:
+        pass
+
     return None
 
 
 def pprint_tar_contents(tar_path: str) -> str:
+    """Print tar contents from file path.
+
+    Args:
+        tar_path: Path to tar file
+
+    Returns:
+        Formatted tree structure of tar contents
+    """
     struct = make_nested_dict()
 
     with tarfile.open(tar_path, "r") as tar:
+        for member in tar:
+            parts = member.name.strip("/").split("/")
+
+            current = struct
+            for part in parts[:-1]:
+                current = current[part]
+
+            if member.isdir():
+                current[parts[-1]]
+            elif member.isfile():
+                current["__files__"].append(parts[-1])
+
+    return _pprint_struct(struct)
+
+
+def pprint_tar_contents_from_fileobj(fileobj: BinaryIO) -> str:
+    """Print tar contents from file object (no disk extraction).
+
+    Args:
+        fileobj: File-like object containing tar data
+
+    Returns:
+        Formatted tree structure of tar contents
+    """
+    struct = make_nested_dict()
+
+    with tarfile.open(fileobj=fileobj, mode="r:gz") as tar:
         for member in tar:
             parts = member.name.strip("/").split("/")
 
