@@ -34,6 +34,7 @@ from artifact_gui.utils import (
     FILETYPES_TAR,
     browse_directory,
     browse_file,
+    is_duplicate_filepath,
     resolve_path,
 )
 
@@ -311,7 +312,7 @@ class ArtifactParams(TypedDict):
     artifact_name: str
     device_type: str
     output_path: Path
-    additional_files: list[str]
+    additional_files: list[tuple[str, str]]
 
 
 class TarballParams(TypedDict):
@@ -321,7 +322,7 @@ class TarballParams(TypedDict):
     temp_dir: str
     compose_file: Path
     docker_images: list[tuple[str, str, Path]]  # List of (type, source, path) tuples
-    additional_files: list[str]
+    additional_files: list[tuple[str, str]]
     inner_index_content: str
     outer_index_content: str
     app_name: str
@@ -334,6 +335,7 @@ class DockerCreator(BaseTab):
     def setup_ui(self) -> None:
         # Initialize instance variables for multi-container support
         self.docker_images: list[tuple[str, str]] = []  # List of (type, source) tuples
+        self.additional_files: list[tuple[str, str]] = []
         self.compose_service_count: int = 0  # Number of services in compose file
 
         self.docker_frame = ttk.Frame(self.frame)
@@ -522,22 +524,38 @@ class DockerCreator(BaseTab):
         ttk.Button(
             files_buttons,
             text="Add File",
-            command=lambda: browse_file(
-                title="Select File to Add",
-                filetypes=FILETYPES_ALL,
-                list_insert=self.docker_files_listbox,
-            ),
+            command=self.browse_additional_file,
         ).pack(fill=tk.X, pady=2)
         ttk.Button(
             files_buttons,
             text="Add Dir",
-            command=lambda: browse_directory(
-                title="Select Directory to Add", list_insert=self.docker_files_listbox
-            ),
+            command=self.browse_additional_dir,
         ).pack(fill=tk.X, pady=2)
         ttk.Button(files_buttons, text="Remove", command=self.remove_docker_file).pack(
             fill=tk.X, pady=2
         )
+
+    def browse_additional_file(self) -> None:
+        """Browse and add an additional file to the list."""
+        file_path = browse_file(
+            title="Select File to Add", filetypes=FILETYPES_ALL
+        )
+        if file_path:
+            file_name = Path(file_path).name
+            if is_duplicate_filepath(self.docker_files_listbox, file_name):
+                return
+            self.additional_files.append((file_path, file_name))
+            self.docker_files_listbox.insert(tk.END, file_name)
+
+    def browse_additional_dir(self) -> None:
+        """Browse and add an additional dir to the list."""
+        dir_path = browse_directory(title="Select Directory to Add")
+        if dir_path:
+            dir_name = f"{Path(dir_path).name}/"
+            if is_duplicate_filepath(self.docker_files_listbox, dir_name):
+                return
+            self.additional_files.append((dir_path, dir_name))
+            self.docker_files_listbox.insert(tk.END, dir_name)
 
     def _setup_bottom_fields(self) -> None:
         """Setup artifact name, output path, and device type fields."""
@@ -859,6 +877,7 @@ class DockerCreator(BaseTab):
         selection = self.docker_files_listbox.curselection()
         if selection:
             self.docker_files_listbox.delete(selection[0])
+            del self.additional_files[selection[0]]
 
     def _validate_docker_fields(self) -> bool:
         # Validate required fields
@@ -904,7 +923,7 @@ class DockerCreator(BaseTab):
         return True, compose_path, output_path
 
     def _try_copy_additional_files(
-        self, additional_files: list[str], app_dir: Path
+        self, additional_files: list[tuple[str, str]], app_dir: Path
     ) -> bool:
         for file_path_str in additional_files:
             src_path = resolve_path(file_path_str)
@@ -1017,7 +1036,7 @@ class DockerCreator(BaseTab):
                     tar.add(image_path, arcname=f"{app_name}/{image_path.name}")
 
                 # Add additional files directly
-                for file_path_str in additional_files:
+                for file_path_str, _ in additional_files:
                     file_path = resolve_path(file_path_str)
                     if file_path and file_path.exists():
                         self.cli_executor.output_queue.put(
@@ -1259,9 +1278,6 @@ class DockerCreator(BaseTab):
         device_type = self.docker_device_type_var.get().strip()
         output_path = self.docker_output_path_var.get().strip()
 
-        # Get additional files from listbox
-        additional_files = list(self.docker_files_listbox.get(0, tk.END))
-
         if not self._validate_docker_fields():
             return
 
@@ -1278,7 +1294,7 @@ class DockerCreator(BaseTab):
             "artifact_name": artifact_name,
             "device_type": device_type,
             "output_path": resolved_output_path,
-            "additional_files": additional_files,
+            "additional_files": self.additional_files,
         }
 
         artifact_creator = partial(self.create_artifact, **params)
@@ -1310,7 +1326,7 @@ class DockerCreator(BaseTab):
             return False
 
         # Step 3: Validate additional files exist
-        for file_path_str in params["additional_files"]:
+        for file_path_str, _ in params["additional_files"]:
             file_path = resolve_path(file_path_str)
             if not file_path or not file_path.exists():
                 self.cli_executor.output_queue.put(

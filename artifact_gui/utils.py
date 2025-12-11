@@ -115,7 +115,7 @@ def update_combobox_values(
         combo.after_idle(combo.selection_clear)
 
 
-def _is_duplicate_filepath(listbox: tk.Listbox, filepath: str) -> bool:
+def is_duplicate_filepath(listbox: tk.Listbox, filepath: str) -> bool:
     """Check if a filepath is already in the listbox.
 
     Args:
@@ -162,7 +162,7 @@ def browse_file(
         if (
             list_insert is not None
             and highlight_list_dupes
-            and not _is_duplicate_filepath(list_insert, filename)
+            and not is_duplicate_filepath(list_insert, filename)
         ):
             list_insert.insert(tk.END, filename)
         return filename
@@ -191,7 +191,7 @@ def browse_directory(
         if (
             list_insert is not None
             and highlight_list_dupes
-            and not _is_duplicate_filepath(list_insert, dirname)
+            and not is_duplicate_filepath(list_insert, dirname)
         ):
             list_insert.insert(tk.END, dirname)
         return dirname
