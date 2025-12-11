@@ -3,6 +3,7 @@ Single-file Artifact Tab - Creation of single-file RDFM artifacts
 """
 
 import tkinter as tk
+from pathlib import Path
 from tkinter import ttk
 
 from artifact_gui.tabs.base_tab import BaseTab
@@ -74,7 +75,7 @@ class SingleFileCreator(BaseTab):
         ttk.Label(self.single_file_frame, text="Dest Directory:").grid(
             row=0, column=3, padx=STANDARD_PAD, pady=STANDARD_PAD, sticky="w"
         )
-        self.dest_dir_var = tk.StringVar()
+        self.dest_dir_var = tk.StringVar(value="/data")
         ttk.Entry(self.single_file_frame, textvariable=self.dest_dir_var).grid(
             row=0,
             column=4,
@@ -129,6 +130,13 @@ class SingleFileCreator(BaseTab):
                 "Artifact Name": artifact_name,
             }
         ):
+            return
+
+        if not Path(dest_dir).resolve().is_relative_to(Path("/data")):
+            self.show_warning(
+                "Invalid Destination",
+                "Destination directory must be /data or a subdirectory of /data.",
+            )
             return
 
         # Resolve output path
