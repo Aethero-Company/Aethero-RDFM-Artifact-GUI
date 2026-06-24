@@ -3,15 +3,14 @@ Docker Artifact Tab - Creation of Docker RDFM artifacts
 """
 
 import io
+import queue
 import re
 import shutil
 import subprocess
 import tarfile
 import tempfile
 import threading
-import time
 import tkinter as tk
-from collections.abc import Callable
 from functools import partial
 from pathlib import Path
 from tkinter import messagebox, ttk
@@ -37,9 +36,6 @@ from artifact_gui.utils import (
     is_duplicate_filepath,
     resolve_path,
 )
-
-# Cache timeout for Docker images (2 minutes)
-DOCKER_IMAGE_CACHE_TIMEOUT = 120
 
 # Docker image format expected column count
 DOCKER_IMAGE_COLUMN_COUNT = 3
@@ -160,7 +156,7 @@ class DockerImageSelectionDialog:
         return self.result
 
     def _load_images(self) -> None:
-        """Load Docker images in background thread."""
+        """Load Docker images in a background thread."""
 
         def fetch_images() -> None:
             error_message = None
@@ -194,12 +190,26 @@ class DockerImageSelectionDialog:
             except Exception:
                 error_message = "Error loading Docker images"
 
-            # Update UI on main thread
+            self._load_queue.put((images, error_message))
+
+        def poll_queue() -> None:
+            try:
+                images, error_message = self._load_queue.get_nowait()
+            except queue.Empty:
+                if self.dialog:
+                    self.dialog.after(100, poll_queue)
+                return
             self._update_dialog_ui(images, error_message)
 
-        # Run in background thread
-        thread = threading.Thread(target=fetch_images, daemon=True)
-        thread.start()
+        # Thread-safe handoff from worker -> main thread.
+        self._load_queue: queue.Queue[
+            tuple[list[dict[str, str]], str | None]
+        ] = queue.Queue()
+
+        # Run the subprocess off the main thread, then poll for its result
+        # from the main thread
+        threading.Thread(target=fetch_images, daemon=True).start()
+        self.dialog.after(100, poll_queue)
 
     def _parse_docker_images(self, stdout: str) -> list[dict[str, str]]:
         """Parse docker images command output.
@@ -236,12 +246,14 @@ class DockerImageSelectionDialog:
         if not self.dialog:
             return
 
+        # Always invoked on the main thread (via the poll loop), so update
+        # widgets directly.
         if error_message:
-            self.dialog.after(0, lambda: self._show_error(error_message))
+            self._show_error(error_message)
         elif images:
-            self.dialog.after(0, lambda: self._populate_treeview(images))
+            self._populate_treeview(images)
         else:
-            self.dialog.after(0, lambda: self._show_error("No Docker images found"))
+            self._show_error("No Docker images found")
 
     def _populate_treeview(self, images: list[dict[str, str]]) -> None:
         """Populate treeview with images (called from main thread).
@@ -706,77 +718,6 @@ class DockerCreator(BaseTab):
         finally:
             # Clear the process reference
             self.cli_executor.set_current_process(None, is_running=True)
-
-    def refresh_docker_images(
-        self, callback: Callable[[list[str]], None] | None = None
-    ) -> None:
-        """Refresh the list of available Docker images from the local Docker daemon.
-
-        Runs 'docker images' command in a background thread to get the list of
-        available images and updates the cache.
-
-        Args:
-            callback: Optional callback function to call after images are refreshed
-        """
-
-        def fetch_images() -> None:
-            try:
-                # Run docker images command to get list of images
-                result = subprocess.run(
-                    ["docker", "images", "--format", "{{.Repository}}:{{.Tag}}"],
-                    check=True,
-                    capture_output=True,
-                    text=True,
-                    timeout=10,
-                )
-
-                if result.returncode == 0:
-                    # Parse the output and filter out <none> entries
-                    images = []
-                    for line in result.stdout.strip().split("\n"):
-                        if line and "<none>" not in line:
-                            images.append(line)
-
-                    # Update cache on main thread
-                    self.docker_images_listbox.after(
-                        0,
-                        lambda: self._update_docker_images_cache(
-                            sorted(images), callback
-                        ),
-                    )
-                else:
-                    self.docker_images_listbox.after(
-                        0, lambda: self._update_docker_images_cache([], callback)
-                    )
-
-            except (FileNotFoundError, subprocess.TimeoutExpired, Exception):
-                self.docker_images_listbox.after(
-                    0, lambda: self._update_docker_images_cache([], callback)
-                )
-
-        # Run in background thread
-        thread = threading.Thread(target=fetch_images, daemon=True)
-        thread.start()
-
-    def _update_docker_images_cache(
-        self, images: list[str], callback: Callable[[list[str]], None] | None = None
-    ) -> None:
-        """Update the Docker images cache (called from main thread).
-
-        This method must be called from the main thread to safely update
-        the cache with the fetched Docker images.
-
-        Args:
-            images: List of Docker image names in "repository:tag" format
-            callback: Optional callback function to call after cache is updated
-        """
-        # Update cache
-        self.docker_images_cache = images
-        self.docker_images_cache_time = time.time()
-
-        # Call callback if provided
-        if callback:
-            callback(images)
 
     def _on_compose_file_changed(self, *args: object) -> None:  # noqa: ARG002
         """Called when compose file path changes.
