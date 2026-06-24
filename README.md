@@ -3,7 +3,7 @@
 A Python/Tkinter desktop application that provides a graphical interface for RDFM Artifact CLI.
 
 ## Installation/Usage
-### The recommended, and simplest, way to use the Aethero RDFM-Artifact GUI is through using an AppImage downloaded from a release. However, options are also provided for installation as a Docker container or as a native install.
+### The recommended, and simplest, way to use the Aethero RDFM-Artifact GUI is with the AppImage downloaded from [the latest release](https://github.com/Aethero-Company/Aethero-RDFM-Artifact-GUI/releases/latest). However, options are also provided for installation as a Docker container or as a native install.
 
 ## Using the AppImage
 
