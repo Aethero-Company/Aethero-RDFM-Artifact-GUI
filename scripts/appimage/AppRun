@@ -1,0 +1,18 @@
+#!/bin/sh
+# AppImage entry point. Copied to the AppDir root by scripts/build-appimg.sh.
+#
+# Makes the bundle self-locating, puts the bundled rdfm-artifact binary and its
+# shared libs on the search path, then either forwards to the CLI or launches
+# the GUI.
+HERE="$(dirname "$(readlink -f "$0")")"
+export PATH="$HERE/usr/bin:$PATH"
+export LD_LIBRARY_PATH="$HERE/usr/lib:$LD_LIBRARY_PATH"
+
+# With --cli, act as the rdfm-artifact CLI: drop the flag and forward the rest
+# to the bundled binary (already on PATH above). Otherwise launch the GUI.
+if [ "$1" = "--cli" ]; then
+    shift
+    exec rdfm-artifact "$@"
+fi
+
+exec "$HERE/usr/python/bin/python3" -m artifact_gui.artifact_tool "$@"

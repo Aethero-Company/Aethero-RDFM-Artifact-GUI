@@ -1,0 +1,80 @@
+name: release
+on:
+  push:
+    tags:
+      # Coarse glob filter (globs can't express full semver); the validate job
+      # below enforces strict vMAJOR.MINOR.PATCH[-prerelease][+build] via regex.
+      - 'v[0-9]*.[0-9]*.[0-9]*'
+
+jobs:
+
+  validate-tag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enforce semantic-version tag
+        run: |
+          # Official semver regex (https://semver.org), prefixed with 'v'.
+          semver='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*)(\.(0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*))*))?(\+([0-9a-zA-Z-]+(\.[0-9a-zA-Z-]+)*))?$'
+          if [[ ! "${{ github.ref_name }}" =~ $semver ]]; then
+            echo "ERROR: tag '${{ github.ref_name }}' is not valid semver (expected vMAJOR.MINOR.PATCH)"
+            exit 1
+          fi
+          echo "Tag '${{ github.ref_name }}' is valid semver."
+
+  build:
+    needs: validate-tag
+    uses: ./.github/workflows/build-appimage.yml
+
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    needs: build
+    steps:
+
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Fetch annotated tag object
+      run: |
+        git fetch --force origin tag ${{ github.ref_name }} --no-recurse-submodules
+
+    - name: Download AppImage artifact(s)
+      uses: actions/download-artifact@v5
+      with:
+        path: artifacts
+        pattern: rdfm-artifact-*
+
+    - name: Verify the AppImage is present
+      run: |
+        APPIMAGE=artifacts/RDFM-Artifact-GUI-x86_64.AppImage
+        if [ ! -f "$APPIMAGE" ]; then
+          echo "ERROR: $APPIMAGE not found"
+          exit 1
+        fi
+        echo "AppImage to release: $APPIMAGE"
+
+    - name: Get release notes from tag
+      id: release_notes
+      run: |
+        cd ${{ github.workspace }}
+        RELEASE_CONTENTS=$(git tag -l --format='%(contents)' ${{ github.ref_name }})
+
+        if [ -n "$RELEASE_CONTENTS" ]; then
+          echo "$RELEASE_CONTENTS" > release_notes.md
+        else
+          echo "No release notes found in tag annotation, reverting to default note"
+          echo "Release ${{ github.ref_name }}" > release_notes.md
+        fi
+
+        echo "Got release notes:"
+        cat release_notes.md
+
+    - uses: ncipollo/release-action@v1
+      with:
+        tag: ${{ github.ref_name }}
+        name: Release ${{ github.ref_name }}
+        artifacts: "artifacts/RDFM-Artifact-GUI-x86_64.AppImage"
+        bodyFile: "${{ github.workspace }}/release_notes.md"

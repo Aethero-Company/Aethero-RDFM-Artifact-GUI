@@ -1,0 +1,125 @@
+name: Build AppImage
+
+on:
+  workflow_dispatch:
+  workflow_call:
+    outputs:
+      artifact_names:
+        description: "Names of artifacts to be expected"
+        value: ${{ jobs.set-expected.outputs.artifact_names }}
+
+env:
+  PYTHON_RELEASE: 20260610
+  PYTHON_VERSION: 3.12.13
+  APPIMAGETOOL_URL: https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+  CCACHE_DIR: ${{ github.workspace }}/.ccache
+  DOCKER_IMG: rdfm-artifact-builder
+  APPIMAGETOOL: appimagetool-x86_64.AppImage
+
+jobs:
+
+  set-expected:
+    runs-on: ubuntu-latest
+    outputs:
+      artifact_names: ${{ steps.set.outputs.names }}
+    steps:
+      - id: set
+        run: |
+          echo "names=rdfm-artifact-appimage" >> "$GITHUB_OUTPUT"
+
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Derive Python tarball name and URL
+        run: |
+          PY_TARBALL="cpython-${PYTHON_VERSION}+${PYTHON_RELEASE}-x86_64-unknown-linux-gnu-install_only.tar.gz"
+          echo "PY_TARBALL=$PY_TARBALL" >> "$GITHUB_ENV"
+          echo "PY_URL=https://github.com/astral-sh/python-build-standalone/releases/download/${PYTHON_RELEASE}/${PY_TARBALL}" >> "$GITHUB_ENV"
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build rdfm-artifact-builder Image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          tags: ${{ env.DOCKER_IMG }}
+          file: ./Dockerfile
+          target: builder
+          
+      - name: Fetch Other Dependencies
+        run: |
+          cd "$HOME"
+          wget -q "$APPIMAGETOOL_URL"
+          wget -q "$PY_URL"
+          chmod +x "$HOME/$APPIMAGETOOL"
+
+      - name: Create Build Directory
+        run: |
+          echo "APPDIR=$HOME/build/AppDir" >> "$GITHUB_ENV"
+          mkdir -p "$HOME/build/AppDir/usr/bin" \
+                   "$HOME/build/AppDir/usr/lib" \
+                   "$HOME/build/AppDir/usr/python"
+
+      - name: Bundle Python and install artifact_gui
+        run: |
+          echo "Extracting python to AppDir"
+          tar -xzf "$HOME/$PY_TARBALL" -C "$APPDIR/usr/python" --strip-components=1
+          PYBIN="$APPDIR/usr/python/bin/python3"
+          echo "Installing artifact_gui into AppDir"
+          "$PYBIN" -m pip install --no-cache-dir "${{ github.workspace }}"
+
+      - name: Extract rdfm-artifact binary and shared libs
+        env:
+          BINARY_IN_IMAGE: /build/rdfm/tools/rdfm-artifact/rdfm-artifact
+        run: |
+          set -euo pipefail
+          cid="$(docker create "$DOCKER_IMG")"
+          trap 'docker rm -f "$cid" >/dev/null 2>&1 || true' EXIT
+
+          echo "Copying rdfm-artifact binary"
+          docker cp "$cid:$BINARY_IN_IMAGE" "$APPDIR/usr/bin/rdfm-artifact"
+
+          echo "Resolving shared-library closure inside the image"
+          libs="$(docker run --rm "$DOCKER_IMG" sh -c '
+            ldd '"$BINARY_IN_IMAGE"' \
+              | grep "=>" \
+              | grep -oE "/[^ ]+" \
+              | grep -vE "ld-linux|libc\.so|libm\.so|libpthread|libdl\.so|librt\.so" \
+              | while read -r p; do printf "%s\t%s\n" "$(basename "$p")" "$(readlink -f "$p")"; done
+          ')"
+          echo "$libs" | while IFS="$(printf '\t')" read -r soname real; do
+            [ -z "$soname" ] && continue
+            docker cp "$cid:$real" "$APPDIR/usr/lib/$soname"
+          done
+          echo "Extracted rdfm-artifact and $(ls "$APPDIR/usr/lib" | wc -l) lib(s)"
+
+      - name: Copy AppRun, .desktop, and icon into AppDir
+        run: |
+          cp "${{ github.workspace }}/scripts/appimage/AppRun" "$APPDIR/AppRun"
+          chmod +x "$APPDIR/AppRun"
+          cp "${{ github.workspace }}/scripts/appimage/rdfm-artifact-gui.desktop" \
+             "$APPDIR/rdfm-artifact-gui.desktop"
+          cp "${{ github.workspace }}/artifact_gui/assets/app_icon.png" \
+             "$APPDIR/rdfm-artifact-gui.png"
+
+      - name: Package with appimagetool
+        run: |
+          ARCH=x86_64 "$HOME/$APPIMAGETOOL" --appimage-extract-and-run "$APPDIR" \
+            "$HOME/build/RDFM-Artifact-GUI-x86_64.AppImage"
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rdfm-artifact-appimage
+          path: |
+            ~/build/RDFM-Artifact-GUI-x86_64.AppImage
+          if-no-files-found: ignore
+          retention-days: 5

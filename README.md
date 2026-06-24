@@ -1,10 +1,38 @@
-# Aethero RDFM GUI
+# Aethero RDFM-Artifact GUI
 
 A Python/Tkinter desktop application that provides a graphical interface for RDFM Artifact CLI.
 
-## Docker Installation (Recommended)
+## Installation/Usage
+### The recommended, and simplest, way to use the Aethero RDFM-Artifact GUI is through using an AppImage downloaded from a release. However, options are also provided for installation as a Docker container or as a native install.
 
-The recommended way to run RDFM Artifact GUI is using Docker, which bundles all dependencies and works on any OS. This method may also drastically reduce the storage space needed for installation depending on which dependencies your system already has.
+## Using the AppImage
+
+### Prerequisites
+
+- libfuse
+
+### Quick Start
+
+1. **Download the AppImage**
+
+2. **Ensure the AppImage is executable**
+   ```bash
+   chmod +x RDFM-Artifact-GUI-x86_64.AppImage
+   ```
+
+3. **Run the application**
+   ```bash
+   ./RDFM-Artifact-GUI-x86_64.AppImage
+   ```
+
+4. **Use the CLI**
+
+   If access to the rdfm-artifact CLI is needed, it can be accessed with 
+   ```bash
+   ./RDFM-Artifact-GUI-x86_64.AppImage --cli
+   ```
+<details>
+<summary>Docker Installation</summary>
 
 The launch scripts for the docker container (`rdfm-artifact` and `rdfm-artifact-gui`) map the host user home directory into the home directory of the container user so that file access in the container is 1:1 with the host.
 
@@ -47,10 +75,9 @@ The launch scripts for the docker container (`rdfm-artifact` and `rdfm-artifact-
 ### File Permissions
 
 The Docker image is built with your user's UID/GID to ensure files created by `rdfm-artifact` are owned by your host user, not root.
-
-## Native Installation
-
-If you prefer to run without Docker, the application can also be installed natively. This method also installs rdfm-artifact directly onto the system. 
+</details>
+<details>
+<summary>Native Installation</summary>
 
 This method has the following dependencies:
 
@@ -83,7 +110,10 @@ rdfm-artifact-gui
 ```
 Note that you may need to restart your shell for the application to be on your PATH.
 
-## Uninstalling
+</details>
+
+<details>
+<summary>Uninstalling</summary>
 
 ### Uninstalling Docker Verison
 
@@ -107,6 +137,7 @@ rm ~/.local/bin/rdfm-artifact
 ```bash
 pipx uninstall rdfm-artifact-gui
 ```
+</details>
 
 ## Development
 

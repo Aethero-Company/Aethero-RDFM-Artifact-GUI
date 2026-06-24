@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=RDFM Artifact GUI
+Exec=rdfm-artifact-gui
+Icon=rdfm-artifact-gui
+Categories=Development;Utility;
+Terminal=false
